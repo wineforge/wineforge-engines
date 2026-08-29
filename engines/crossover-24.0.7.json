@@ -46,6 +46,18 @@
         "sha256": "cbd6ef100ed5ea1f4b1be205a28d4139f48424fa9d04228a5474c71a5f466e22",
         "provenance": "Compatibility backport for modern Binutils PE delay-import section semantics; delay IAT pointers must remain writable.",
         "targets": ["macos-x86_64"]
+      },
+      {
+        "path": "patches/24.0.7/0006-winebus-limit-iohid-to-game-controllers.patch",
+        "sha256": "529bd9c876a5ee083b8f126c7fd567bb8a055713215465c6742a784422cd0eab",
+        "provenance": "Adapted backport of upstream Wine commit c5f9d9188a6dea5b9e9e4a2f8fbf362f11b5e72b, restricting an explicitly enabled IOHID backend to game controllers as defense in depth.",
+        "targets": ["macos-x86_64"]
+      },
+      {
+        "path": "patches/24.0.7/0007-winebus-disable-iohid-by-default.patch",
+        "sha256": "4d7844926d294d1d31c128ca972fa85ab1a8014bb8ce03fd188fb7d8ec5c0f94",
+        "provenance": "Wineforge privacy default verified on macOS: direct IOHID controller access is opt-in so fresh Wine prefixes do not request Input Monitoring permission.",
+        "targets": ["macos-x86_64"]
       }
     ]
   },

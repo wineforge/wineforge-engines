@@ -1,0 +1,28 @@
+From: Wineforge contributors <wineforge@users.noreply.github.com>
+Date: Sat, 29 Aug 2026 20:20:00 +0530
+Subject: [PATCH] winebus.sys: Disable IOHID by default on macOS
+
+Starting the IOHID backend can cause macOS to request Input Monitoring access
+during fresh-prefix initialization, even when the device callback later rejects
+every non-controller device.  Desktop applications do not need this access.
+
+Keep the backend available behind the existing Wine bus-options registry key.
+Users who need direct IOHID controller support can set "Enable IOHID" to "Y".
+---
+ dlls/winebus.sys/main.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/dlls/winebus.sys/main.c b/dlls/winebus.sys/main.c
+--- a/dlls/winebus.sys/main.c
++++ b/dlls/winebus.sys/main.c
+@@ -802,7 +802,7 @@ static NTSTATUS fdo_pnp_dispatch(DEVICE_OBJECT *device, IRP *irp)
+         if (!check_bus_option(L"Enable SDL", 1) || sdl_driver_init())
+         {
+             udev_driver_init();
+-            iohid_driver_init();
++            if (check_bus_option(L"Enable IOHID", 0)) iohid_driver_init();
+         }
+         xbox_driver_init();
+
+-- 
+2.50.1
