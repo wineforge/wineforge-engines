@@ -60,6 +60,12 @@ workflow can build one version for both platforms without uploading compiled
 engines. Release publication is separately gated by the protected `release`
 environment and the manifest's `redistribution.status` field.
 
+To retain compiled engines from Actions for private use, run the workflow from
+a **private fork** and enable `upload_engine_artifacts`. Public repositories
+refuse that option unless the same run is publishing a separately approved
+release. This keeps the auditable build workflow reusable without turning the
+public upstream repository into a binary redistribution channel.
+
 For an independent local build, Linux uses a digest-pinned Podman/Docker image
 and macOS uses the native host toolchain:
 

@@ -1,0 +1,39 @@
+From c5f9d9188a6dea5b9e9e4a2f8fbf362f11b5e72b Mon Sep 17 00:00:00 2001
+From: Tim Clem <tclem@codeweavers.com>
+Date: Fri, 1 Mar 2024 14:39:18 -0800
+Subject: [PATCH] winebus.sys: Only attempt to open joysticks and gamepads in
+ the IOHID backend.
+
+Opening keyboards, mice, or the Touch Bar on older MacBooks triggers a
+permission prompt for input monitoring.  CrossOver 24.0.7 predates the
+upstream primary-usage filtering, so adapt upstream Wine commit
+c5f9d9188a6dea5b9e9e4a2f8fbf362f11b5e72b to its IOHIDDeviceConformsTo
+implementation.
+
+Upstream: https://gitlab.winehq.org/wine/wine/-/commit/c5f9d9188a6dea5b9e9e4a2f8fbf362f11b5e72b
+---
+ dlls/winebus.sys/bus_iohid.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/dlls/winebus.sys/bus_iohid.c b/dlls/winebus.sys/bus_iohid.c
+--- a/dlls/winebus.sys/bus_iohid.c
++++ b/dlls/winebus.sys/bus_iohid.c
+@@ -282,6 +282,18 @@ static void handle_DeviceMatchingCallback(void *context, IOReturn result, void *
+     desc.version = CFNumberToDWORD(IOHIDDeviceGetProperty(IOHIDDevice, CFSTR(kIOHIDVersionNumberKey)));
+     desc.uid = CFNumberToDWORD(IOHIDDeviceGetProperty(IOHIDDevice, CFSTR(kIOHIDLocationIDKey)));
+
++    if (!IOHIDDeviceConformsTo(IOHIDDevice, kHIDPage_GenericDesktop, kHIDUsage_GD_GamePad) &&
++        !IOHIDDeviceConformsTo(IOHIDDevice, kHIDPage_GenericDesktop, kHIDUsage_GD_Joystick))
++    {
++        /* winebus isn't currently meant to handle anything but these, and
++         * opening keyboards, mice, or the Touch Bar on older MacBooks triggers
++         * a permissions dialog for input monitoring.
++         */
++        TRACE("Ignoring HID device %p (vid %04x, pid %04x): not a joystick or gamepad\n",
++              IOHIDDevice, desc.vid, desc.pid);
++        return;
++    }
++
+     if (IOHIDDeviceOpen(IOHIDDevice, 0) != kIOReturnSuccess)
+     {
+         ERR("Failed to open HID device %p (vid %04x, pid %04x)\n", IOHIDDevice, desc.vid, desc.pid);
