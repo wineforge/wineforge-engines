@@ -26,6 +26,174 @@ preparation_test=$(mktemp -d "${TMPDIR:-/tmp}/wineforge-prepare-test.XXXXXX")
 cleanup() { rm -rf -- "$preparation_test"; }
 trap cleanup EXIT HUP INT TERM
 
+source_cache_test="$preparation_test/source-cache"
+mkdir -p -- "$source_cache_test/fixture/sources/wine" "$source_cache_test/bin"
+printf 'cached source fixture\n' > "$source_cache_test/fixture/sources/wine/README"
+tar -czf "$source_cache_test/source.tar.gz" -C "$source_cache_test/fixture" sources
+cat > "$source_cache_test/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=
+[[ -z ${WINEFORGE_TEST_CURL_ARGUMENTS:-} ]] || printf '%s\n' "$*" >> "$WINEFORGE_TEST_CURL_ARGUMENTS"
+while (( $# )); do
+  case "$1" in
+    --output) output=${2:?missing output}; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$output" ]]
+count=0
+[[ ! -f "$WINEFORGE_TEST_CURL_COUNT" ]] || count=$(<"$WINEFORGE_TEST_CURL_COUNT")
+printf '%s\n' "$((count + 1))" > "$WINEFORGE_TEST_CURL_COUNT"
+if [[ ${WINEFORGE_TEST_CURL_FAIL_ONCE:-0} == 1 && $count == 0 ]]; then
+  head -c 32 "$WINEFORGE_TEST_SOURCE_ARCHIVE" > "$output"
+  exit 7
+fi
+cp -- "$WINEFORGE_TEST_SOURCE_ARCHIVE" "$output"
+EOF
+cat > "$source_cache_test/bin/shasum" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+for argument in "$@"; do file=$argument; done
+if cmp -s -- "$file" "$WINEFORGE_TEST_SOURCE_ARCHIVE"; then
+  digest=$WINEFORGE_TEST_SOURCE_SHA256
+else
+  digest=0000000000000000000000000000000000000000000000000000000000000000
+fi
+printf '%s  %s\n' "$digest" "$file"
+EOF
+chmod 755 "$source_cache_test/bin/curl" "$source_cache_test/bin/shasum"
+source_sha256=$(jq -er '.source.sha256' "$repo_dir/engines/crossover-25.1.1.json")
+for destination in first second; do
+  if ! PATH="$source_cache_test/bin:$PATH" \
+    WINEFORGE_SOURCE_CACHE="$source_cache_test/cache" \
+    WINEFORGE_TEST_CURL_COUNT="$source_cache_test/curl-count" \
+    WINEFORGE_TEST_SOURCE_ARCHIVE="$source_cache_test/source.tar.gz" \
+    WINEFORGE_TEST_SOURCE_SHA256="$source_sha256" \
+    "$repo_dir/scripts/fetch-source.sh" 25.1.1 "$source_cache_test/$destination" \
+    >/dev/null; then
+    printf 'source-cache fixture fetch failed\n' >&2
+    failures=$((failures + 1))
+    break
+  fi
+done
+if [[ $(<"$source_cache_test/curl-count") != 1 ]]; then
+  printf 'verified engine source was downloaded more than once\n' >&2
+  failures=$((failures + 1))
+fi
+
+resume_test="$preparation_test/source-resume"
+mkdir -p -- "$resume_test"
+if PATH="$source_cache_test/bin:$PATH" \
+  WINEFORGE_SOURCE_CACHE="$resume_test/cache" \
+  WINEFORGE_TEST_CURL_COUNT="$resume_test/curl-count" \
+  WINEFORGE_TEST_CURL_ARGUMENTS="$resume_test/curl-arguments" \
+  WINEFORGE_TEST_CURL_FAIL_ONCE=1 \
+  WINEFORGE_TEST_SOURCE_ARCHIVE="$source_cache_test/source.tar.gz" \
+  WINEFORGE_TEST_SOURCE_SHA256="$source_sha256" \
+  "$repo_dir/scripts/fetch-source.sh" 25.1.1 "$resume_test/failed" \
+  >/dev/null 2>&1; then
+  printf 'interrupted source download unexpectedly succeeded\n' >&2
+  failures=$((failures + 1))
+fi
+if ! find "$resume_test/cache" -maxdepth 1 -type f -name '*.part' | grep -q .; then
+  printf 'interrupted source download did not preserve its partial file\n' >&2
+  failures=$((failures + 1))
+fi
+if ! PATH="$source_cache_test/bin:$PATH" \
+  WINEFORGE_SOURCE_CACHE="$resume_test/cache" \
+  WINEFORGE_TEST_CURL_COUNT="$resume_test/curl-count" \
+  WINEFORGE_TEST_CURL_ARGUMENTS="$resume_test/curl-arguments" \
+  WINEFORGE_TEST_CURL_FAIL_ONCE=1 \
+  WINEFORGE_TEST_SOURCE_ARCHIVE="$source_cache_test/source.tar.gz" \
+  WINEFORGE_TEST_SOURCE_SHA256="$source_sha256" \
+  "$repo_dir/scripts/fetch-source.sh" 25.1.1 "$resume_test/resumed" \
+  >/dev/null; then
+  printf 'source download did not resume after interruption\n' >&2
+  failures=$((failures + 1))
+fi
+if [[ $(<"$resume_test/curl-count") != 2 ]] || \
+  ! grep -q -- '--continue-at -' "$resume_test/curl-arguments"; then
+  printf 'source retry did not use the preserved partial download\n' >&2
+  failures=$((failures + 1))
+fi
+
+macos_preflight_test="$preparation_test/macos-preflight"
+mkdir -p -- "$macos_preflight_test/bin" "$macos_preflight_test/brew/include" \
+  "$macos_preflight_test/brew/lib" "$macos_preflight_test/brew/llvm/bin" \
+  "$macos_preflight_test/brew/bison/bin"
+printf 'synthetic arm64 library\n' > "$macos_preflight_test/brew/lib/libfreetype.dylib"
+cat > "$macos_preflight_test/bin/brew" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  --prefix)
+    case "${2:-}" in
+      '') printf '%s\n' "$WINEFORGE_TEST_BREW_PREFIX" ;;
+      llvm) printf '%s\n' "$WINEFORGE_TEST_BREW_PREFIX/llvm" ;;
+      bison) printf '%s\n' "$WINEFORGE_TEST_BREW_PREFIX/bison" ;;
+      *) printf '%s\n' "$WINEFORGE_TEST_BREW_PREFIX" ;;
+    esac
+    ;;
+  list)
+    [[ ${WINEFORGE_TEST_MISSING_FORMULAE:-0} == 1 ]] || \
+      printf '%s 1.0\n' "${3:-formula}"
+    ;;
+  *) exit 64 ;;
+esac
+EOF
+cat > "$macos_preflight_test/bin/file" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${*: -1}" in
+  *libfreetype*) printf '%s: Mach-O 64-bit dynamically linked shared library %s\n' \
+    "${*: -1}" "${WINEFORGE_TEST_FREETYPE_ARCH:-arm64}" ;;
+  *) exec /usr/bin/file "$@" ;;
+esac
+EOF
+cat > "$macos_preflight_test/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: > "$WINEFORGE_TEST_CURL_MARKER"
+exit 99
+EOF
+chmod 755 "$macos_preflight_test/bin/brew" "$macos_preflight_test/bin/file" \
+  "$macos_preflight_test/bin/curl"
+if PATH="$macos_preflight_test/bin:$PATH" \
+  WINEFORGE_TEST_BREW_PREFIX="$macos_preflight_test/brew" \
+  WINEFORGE_TEST_CURL_MARKER="$macos_preflight_test/curl-called" \
+  WINEFORGE_WORK_DIR="$macos_preflight_test/work" \
+  WINEFORGE_DIST_DIR="$macos_preflight_test/dist" \
+  "$repo_dir/scripts/build-engine.sh" 25.1.1 macos-x86_64 \
+  >"$macos_preflight_test/output" 2>&1; then
+  printf 'arm64 dependency preflight unexpectedly succeeded\n' >&2
+  failures=$((failures + 1))
+fi
+if [[ -e "$macos_preflight_test/curl-called" ]] || \
+  ! grep -q 'FreeType.*x86_64' "$macos_preflight_test/output"; then
+  printf 'macOS dependency architecture was not rejected before download\n' >&2
+  failures=$((failures + 1))
+fi
+rm -f -- "$macos_preflight_test/curl-called"
+if PATH="$macos_preflight_test/bin:$PATH" \
+  WINEFORGE_TEST_BREW_PREFIX="$macos_preflight_test/brew" \
+  WINEFORGE_TEST_CURL_MARKER="$macos_preflight_test/curl-called" \
+  WINEFORGE_TEST_FREETYPE_ARCH=x86_64 \
+  WINEFORGE_TEST_MISSING_FORMULAE=1 \
+  WINEFORGE_WORK_DIR="$macos_preflight_test/missing-work" \
+  WINEFORGE_DIST_DIR="$macos_preflight_test/missing-dist" \
+  "$repo_dir/scripts/build-engine.sh" 25.1.1 macos-x86_64 \
+  >"$macos_preflight_test/missing-output" 2>&1; then
+  printf 'missing dependency preflight unexpectedly succeeded\n' >&2
+  failures=$((failures + 1))
+fi
+if [[ -e "$macos_preflight_test/curl-called" ]] || \
+  ! grep -q 'bison jq llvm mingw-w64 pkg-config freetype gnutls' \
+    "$macos_preflight_test/missing-output"; then
+  printf 'macOS dependencies were not reported together before download\n' >&2
+  failures=$((failures + 1))
+fi
+
 reference_test="$preparation_test/reference"
 mkdir -p -- "$reference_test/stage/bin" "$reference_test/stage/share/wineforge"
 printf 'synthetic executable\n' > "$reference_test/stage/bin/wine"
