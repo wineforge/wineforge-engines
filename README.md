@@ -74,6 +74,19 @@ and macOS uses the native host toolchain:
 ./scripts/build-local.sh 24.0.7 macos-x86_64
 ```
 
+On an Apple Silicon Mac, the builder can set up its Intel Homebrew toolchain
+and install missing formulae in one explicitly approved step:
+
+```sh
+./scripts/build-local.sh 24.0.7 macos-x86_64 --setup-macos-deps
+```
+
+This uses Homebrew's standard Intel prefix, `/usr/local`, and does not modify a
+separate Apple Silicon Homebrew installation in `/opt/homebrew`. The official
+Homebrew installer may request administrator access when `/usr/local` has not
+been prepared yet. Wineforge refuses a partial or ambiguous Intel Homebrew
+layout instead of attempting to overwrite or repair it.
+
 Local builds keep verified source archives in a content-addressed user cache,
 independently of disposable build work trees. Interrupted transfers retain a
 `.part` file and resume on the next attempt; every completed archive is checked

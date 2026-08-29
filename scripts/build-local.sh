@@ -4,7 +4,7 @@ IFS=$'\n\t'
 umask 022
 
 usage() {
-  printf 'usage: %s VERSION TARGET [--runtime auto|docker|podman|native] [--store DIRECTORY] [--source-cache DIRECTORY]\n' "$0" >&2
+  printf 'usage: %s VERSION TARGET [--runtime auto|docker|podman|native] [--store DIRECTORY] [--source-cache DIRECTORY] [--setup-macos-deps]\n' "$0" >&2
 }
 
 if (( $# < 2 )); then usage; exit 64; fi
@@ -20,11 +20,13 @@ runtime=auto
 repo_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 store="$repo_dir/local-builds"
 source_cache=
+setup_macos_deps=0
 while (( $# )); do
   case "$1" in
     --runtime) runtime=${2:?missing runtime}; shift 2 ;;
     --store) store=${2:?missing store}; shift 2 ;;
     --source-cache) source_cache=${2:?missing source cache}; shift 2 ;;
+    --setup-macos-deps) setup_macos_deps=1; shift ;;
     *) usage; exit 64 ;;
   esac
 done
@@ -53,6 +55,15 @@ case "$target" in
     ;;
   *) printf 'unsupported target: %s\n' "$target" >&2; exit 64 ;;
 esac
+
+if (( setup_macos_deps )); then
+  [[ "$target" == macos-x86_64 ]] || {
+    printf -- '--setup-macos-deps is valid only for macos-x86_64 builds\n' >&2
+    exit 64
+  }
+  "$repo_dir/scripts/setup-macos-deps.sh" --yes
+  export WINEFORGE_BREW=${WINEFORGE_INTEL_BREW:-/usr/local/bin/brew}
+fi
 
 if [[ -z "$source_cache" ]]; then
   if [[ $(uname -s) == Darwin ]]; then

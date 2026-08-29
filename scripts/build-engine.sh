@@ -63,15 +63,22 @@ fi
 make_command=make
 make_arguments=(-j "${WINEFORGE_JOBS:-2}")
 if [[ "$target" == macos-x86_64 ]]; then
-  command -v brew >/dev/null 2>&1 || {
+  brew_command=${WINEFORGE_BREW:-}
+  if [[ -z "$brew_command" && -x /usr/local/bin/brew ]]; then
+    brew_command=/usr/local/bin/brew
+  elif [[ -z "$brew_command" ]]; then
+    brew_command=$(command -v brew || true)
+  fi
+  [[ -n "$brew_command" && -x "$brew_command" ]] || {
     printf 'Homebrew is required for macOS engine builds\n' >&2
+    printf 'rerun build-local.sh with --setup-macos-deps to install the Intel toolchain\n' >&2
     exit 69
   }
-  brew_prefix=$(brew --prefix)
+  brew_prefix=$("$brew_command" --prefix)
   dependency_prefix=${WINEFORGE_DEPS_PREFIX:-$brew_prefix}
   if [[ -z ${WINEFORGE_DEPS_PREFIX:-} && "$brew_prefix" == /opt/homebrew ]]; then
     printf 'the selected Homebrew prefix contains Apple Silicon libraries, but the engine build requires x86_64\n' >&2
-    printf 'use Intel Homebrew in /usr/local or set WINEFORGE_DEPS_PREFIX to an isolated x86_64 prefix\n' >&2
+    printf 'rerun build-local.sh with --setup-macos-deps, or set WINEFORGE_DEPS_PREFIX to an isolated x86_64 prefix\n' >&2
     exit 69
   fi
   [[ -d "$dependency_prefix/include" && -d "$dependency_prefix/lib" ]] || {
@@ -87,14 +94,14 @@ if [[ "$target" == macos-x86_64 ]]; then
   fi
   missing_formulae=()
   for formula in "${required_formulae[@]}"; do
-    if [[ -z $(brew list --versions "$formula" 2>/dev/null) ]]; then
+    if [[ -z $("$brew_command" list --versions "$formula" 2>/dev/null) ]]; then
       missing_formulae+=("$formula")
     fi
   done
   if (( ${#missing_formulae[@]} != 0 )); then
     printf 'missing Homebrew formulae for the macOS engine build:' >&2
     printf ' %s' "${missing_formulae[@]}" >&2
-    printf '\ninstall them together with: brew install' >&2
+    printf '\nrerun build-local.sh with --setup-macos-deps, or install them together with: %q install' "$brew_command" >&2
     printf ' %q' "${missing_formulae[@]}" >&2
     printf '\n' >&2
     exit 69
@@ -123,18 +130,18 @@ if [[ "$target" == macos-x86_64 ]]; then
 
   export CC='clang -arch x86_64'
   export CXX='clang++ -arch x86_64'
-  llvm_prefix=$(brew --prefix llvm)
+  llvm_prefix=$("$brew_command" --prefix llvm)
   export AR="$llvm_prefix/bin/llvm-ar"
   export RANLIB="$llvm_prefix/bin/llvm-ranlib"
-  export PATH="$llvm_prefix/bin:$(brew --prefix bison)/bin:$PATH"
+  export PATH="$llvm_prefix/bin:$("$brew_command" --prefix bison)/bin:$PATH"
   export PKG_CONFIG_PATH="$dependency_prefix/lib/pkgconfig:$dependency_prefix/share/pkgconfig:${PKG_CONFIG_PATH:-}"
   if [[ -z ${WINEFORGE_DEPS_PREFIX:-} ]]; then
     export CPPFLAGS="-I$dependency_prefix/include ${CPPFLAGS:-}"
     export LDFLAGS="-L$dependency_prefix/lib ${LDFLAGS:-}"
   else
     export DYLD_LIBRARY_PATH="$dependency_prefix/lib:${DYLD_LIBRARY_PATH:-}"
-    make_command=$(brew --prefix make)/bin/gmake
-    make_shell=$(brew --prefix bash)/bin/bash
+    make_command=$("$brew_command" --prefix make)/bin/gmake
+    make_shell=$("$brew_command" --prefix bash)/bin/bash
     make_arguments+=("SHELL=$make_shell")
   fi
 fi
