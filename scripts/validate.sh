@@ -103,7 +103,7 @@ if ! grep -q '^cross_cflags=-g -O2 -std=gnu17$' <<<"$dry_run"; then
 fi
 
 if rg -n -i '(private application|customer name|personal path)' "$repo_dir" \
-  --glob '!scripts/validate.sh' >/dev/null; then
+  --glob '!**/scripts/validate.sh' >/dev/null; then
   printf 'repository-neutrality placeholder found in tracked content\n' >&2
   failures=$((failures + 1))
 fi
