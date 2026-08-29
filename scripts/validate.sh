@@ -118,6 +118,50 @@ if [[ $(<"$resume_test/curl-count") != 2 ]] || \
   failures=$((failures + 1))
 fi
 
+if [[ $(uname -s) == Darwin ]]; then
+  homebrew_setup_test="$preparation_test/homebrew-setup"
+  mkdir -p -- "$homebrew_setup_test/prefix/bin"
+  cat > "$homebrew_setup_test/prefix/bin/brew" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  --prefix) printf '%s\n' "$WINEFORGE_TEST_HOMEBREW_PREFIX" ;;
+  list)
+    [[ ! -f "$WINEFORGE_TEST_HOMEBREW_INSTALLED" ]] || \
+      printf '%s 1.0\n' "${3:?missing formula}"
+    ;;
+  install)
+    shift
+    printf '%s\n' "$@" > "$WINEFORGE_TEST_HOMEBREW_INSTALL_LOG"
+    : > "$WINEFORGE_TEST_HOMEBREW_INSTALLED"
+    ;;
+  *) exit 64 ;;
+esac
+EOF
+  chmod 755 "$homebrew_setup_test/prefix/bin/brew"
+  setup_command=("$repo_dir/scripts/setup-macos-deps.sh" --yes)
+  if [[ $(uname -m) == arm64 ]]; then
+    setup_command=(arch -x86_64 "${setup_command[@]}")
+  fi
+  for iteration in first second; do
+    if ! WINEFORGE_INTEL_BREW="$homebrew_setup_test/prefix/bin/brew" \
+      WINEFORGE_INTEL_BREW_PREFIX="$homebrew_setup_test/prefix" \
+      WINEFORGE_TEST_HOMEBREW_PREFIX="$homebrew_setup_test/prefix" \
+      WINEFORGE_TEST_HOMEBREW_INSTALLED="$homebrew_setup_test/installed" \
+      WINEFORGE_TEST_HOMEBREW_INSTALL_LOG="$homebrew_setup_test/install-log" \
+      "${setup_command[@]}" >"$homebrew_setup_test/$iteration-output"; then
+      printf 'Intel Homebrew dependency setup fixture failed\n' >&2
+      failures=$((failures + 1))
+      break
+    fi
+  done
+  if [[ $(wc -l < "$homebrew_setup_test/install-log") -ne 7 ]] || \
+    ! grep -q 'already installed' "$homebrew_setup_test/second-output"; then
+    printf 'Intel Homebrew dependency setup was not idempotent\n' >&2
+    failures=$((failures + 1))
+  fi
+fi
+
 macos_preflight_test="$preparation_test/macos-preflight"
 mkdir -p -- "$macos_preflight_test/bin" "$macos_preflight_test/brew/include" \
   "$macos_preflight_test/brew/lib" "$macos_preflight_test/brew/llvm/bin" \
@@ -160,6 +204,7 @@ EOF
 chmod 755 "$macos_preflight_test/bin/brew" "$macos_preflight_test/bin/file" \
   "$macos_preflight_test/bin/curl"
 if PATH="$macos_preflight_test/bin:$PATH" \
+  WINEFORGE_BREW="$macos_preflight_test/bin/brew" \
   WINEFORGE_TEST_BREW_PREFIX="$macos_preflight_test/brew" \
   WINEFORGE_TEST_CURL_MARKER="$macos_preflight_test/curl-called" \
   WINEFORGE_WORK_DIR="$macos_preflight_test/work" \
@@ -176,6 +221,7 @@ if [[ -e "$macos_preflight_test/curl-called" ]] || \
 fi
 rm -f -- "$macos_preflight_test/curl-called"
 if PATH="$macos_preflight_test/bin:$PATH" \
+  WINEFORGE_BREW="$macos_preflight_test/bin/brew" \
   WINEFORGE_TEST_BREW_PREFIX="$macos_preflight_test/brew" \
   WINEFORGE_TEST_CURL_MARKER="$macos_preflight_test/curl-called" \
   WINEFORGE_TEST_FREETYPE_ARCH=x86_64 \
