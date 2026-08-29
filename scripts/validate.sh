@@ -94,6 +94,12 @@ for manifest in "$repo_dir"/engines/crossover-*.json; do
   done < <(jq -c '.build.patches[]' "$manifest")
 done
 
+if ! grep -Fq '+            if (check_bus_option(L"Enable IOHID", 0)) iohid_driver_init();' \
+  "$repo_dir/patches/24.0.7/0007-winebus-disable-iohid-by-default.patch"; then
+  printf 'macOS IOHID backend is not disabled by default\n' >&2
+  failures=$((failures + 1))
+fi
+
 dry_run=$(
   DRY_RUN=1 "$repo_dir/scripts/build-engine.sh" 24.0.7 macos-x86_64
 )
