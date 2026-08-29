@@ -4,7 +4,7 @@ IFS=$'\n\t'
 umask 022
 
 usage() {
-  printf 'usage: %s VERSION TARGET [--runtime auto|docker|podman|native] [--store DIRECTORY]\n' "$0" >&2
+  printf 'usage: %s VERSION TARGET [--runtime auto|docker|podman|native] [--store DIRECTORY] [--source-cache DIRECTORY]\n' "$0" >&2
 }
 
 if (( $# < 2 )); then usage; exit 64; fi
@@ -19,10 +19,12 @@ shift 2
 runtime=auto
 repo_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 store="$repo_dir/local-builds"
+source_cache=
 while (( $# )); do
   case "$1" in
     --runtime) runtime=${2:?missing runtime}; shift 2 ;;
     --store) store=${2:?missing store}; shift 2 ;;
+    --source-cache) source_cache=${2:?missing source cache}; shift 2 ;;
     *) usage; exit 64 ;;
   esac
 done
@@ -52,6 +54,21 @@ case "$target" in
   *) printf 'unsupported target: %s\n' "$target" >&2; exit 64 ;;
 esac
 
+if [[ -z "$source_cache" ]]; then
+  if [[ $(uname -s) == Darwin ]]; then
+    source_cache=${HOME:?HOME is required}/Library/Caches/Wineforge/engine-sources
+  else
+    source_cache=${XDG_CACHE_HOME:-${HOME:?HOME is required}/.cache}/wineforge/engine-sources
+  fi
+fi
+if [[ -L "$source_cache" ]]; then
+  printf 'source cache must not be a symlink: %s\n' "$source_cache" >&2
+  exit 65
+fi
+mkdir -p -- "$source_cache"
+source_cache=$(CDPATH= cd -- "$source_cache" && pwd -P)
+[[ "$source_cache" != / ]] || { printf 'refusing root source cache\n' >&2; exit 65; }
+
 build_id="crossover-$version-$target"
 if [[ -L "$store" ]]; then
   printf 'build store must not be a symlink: %s\n' "$store" >&2
@@ -73,6 +90,7 @@ trap cleanup EXIT HUP INT TERM
 if [[ "$runtime" == native ]]; then
   WINEFORGE_WORK_DIR="$output_dir/work" \
     WINEFORGE_DIST_DIR="$output_dir/dist" \
+    WINEFORGE_SOURCE_CACHE="$source_cache" \
     "$repo_dir/scripts/build-engine.sh" "$version" "$target"
 else
   image="wineforge-engine-builder-linux-x86_64:ubuntu-24.04"
@@ -82,8 +100,10 @@ else
     --user "$(id -u):$(id -g)" \
     --volume "$repo_dir:/workspace:ro" \
     --volume "$output_dir:/output" \
+    --volume "$source_cache:/source-cache" \
     --env WINEFORGE_WORK_DIR=/output/work \
     --env WINEFORGE_DIST_DIR=/output/dist \
+    --env WINEFORGE_SOURCE_CACHE=/source-cache \
     --env WINEFORGE_JOBS="${WINEFORGE_JOBS:-2}" \
     "$image" ./scripts/build-engine.sh "$version" "$target"
 fi

@@ -32,8 +32,6 @@ configure_args=(
   --prefix=/
   "--host=$expected_host"
 )
-make_command=make
-make_arguments=(-j "${WINEFORGE_JOBS:-2}")
 if [[ "$target" == macos-x86_64 ]]; then
   # Modern WoW64 keeps the Unix runtime 64-bit while producing both i386 and
   # x86_64 Windows modules for PE32 compatibility on current macOS.
@@ -50,12 +48,96 @@ if [[ ${DRY_RUN:-0} == 1 ]]; then
   exit 0
 fi
 
-for command_name in file jq make patch python3 shasum; do
-  command -v "$command_name" >/dev/null 2>&1 || {
-    printf 'missing required command: %s\n' "$command_name" >&2
+required_commands=(curl file jq make patch python3 shasum tar)
+missing_commands=()
+for command_name in "${required_commands[@]}"; do
+  command -v "$command_name" >/dev/null 2>&1 || missing_commands+=("$command_name")
+done
+if (( ${#missing_commands[@]} != 0 )); then
+  printf 'missing commands required for the engine build:' >&2
+  printf ' %s' "${missing_commands[@]}" >&2
+  printf '\n' >&2
+  exit 69
+fi
+
+make_command=make
+make_arguments=(-j "${WINEFORGE_JOBS:-2}")
+if [[ "$target" == macos-x86_64 ]]; then
+  command -v brew >/dev/null 2>&1 || {
+    printf 'Homebrew is required for macOS engine builds\n' >&2
     exit 69
   }
-done
+  brew_prefix=$(brew --prefix)
+  dependency_prefix=${WINEFORGE_DEPS_PREFIX:-$brew_prefix}
+  if [[ -z ${WINEFORGE_DEPS_PREFIX:-} && "$brew_prefix" == /opt/homebrew ]]; then
+    printf 'the selected Homebrew prefix contains Apple Silicon libraries, but the engine build requires x86_64\n' >&2
+    printf 'use Intel Homebrew in /usr/local or set WINEFORGE_DEPS_PREFIX to an isolated x86_64 prefix\n' >&2
+    exit 69
+  fi
+  [[ -d "$dependency_prefix/include" && -d "$dependency_prefix/lib" ]] || {
+    printf 'invalid macOS dependency prefix: %s\n' "$dependency_prefix" >&2
+    exit 69
+  }
+
+  required_formulae=(bison jq llvm mingw-w64 pkg-config)
+  if [[ -z ${WINEFORGE_DEPS_PREFIX:-} ]]; then
+    required_formulae+=(freetype gnutls)
+  else
+    required_formulae+=(make bash)
+  fi
+  missing_formulae=()
+  for formula in "${required_formulae[@]}"; do
+    if [[ -z $(brew list --versions "$formula" 2>/dev/null) ]]; then
+      missing_formulae+=("$formula")
+    fi
+  done
+  if (( ${#missing_formulae[@]} != 0 )); then
+    printf 'missing Homebrew formulae for the macOS engine build:' >&2
+    printf ' %s' "${missing_formulae[@]}" >&2
+    printf '\ninstall them together with: brew install' >&2
+    printf ' %q' "${missing_formulae[@]}" >&2
+    printf '\n' >&2
+    exit 69
+  fi
+
+  freetype_library=
+  for candidate in "$dependency_prefix/lib/libfreetype.dylib" \
+    "$dependency_prefix/lib/libfreetype.6.dylib"; do
+    if [[ -f "$candidate" ]]; then
+      freetype_library=$candidate
+      break
+    fi
+  done
+  if [[ -z "$freetype_library" ]]; then
+    printf 'FreeType x86_64 library not found beneath dependency prefix %s\n' \
+      "$dependency_prefix" >&2
+    exit 69
+  fi
+  freetype_description=$(file "$freetype_library")
+  if [[ "$freetype_description" != *x86_64* ]]; then
+    printf 'FreeType must provide x86_64 libraries for the Rosetta build: %s\n' \
+      "$freetype_description" >&2
+    printf 'use Intel Homebrew in /usr/local or set WINEFORGE_DEPS_PREFIX to an isolated x86_64 prefix\n' >&2
+    exit 69
+  fi
+
+  export CC='clang -arch x86_64'
+  export CXX='clang++ -arch x86_64'
+  llvm_prefix=$(brew --prefix llvm)
+  export AR="$llvm_prefix/bin/llvm-ar"
+  export RANLIB="$llvm_prefix/bin/llvm-ranlib"
+  export PATH="$llvm_prefix/bin:$(brew --prefix bison)/bin:$PATH"
+  export PKG_CONFIG_PATH="$dependency_prefix/lib/pkgconfig:$dependency_prefix/share/pkgconfig:${PKG_CONFIG_PATH:-}"
+  if [[ -z ${WINEFORGE_DEPS_PREFIX:-} ]]; then
+    export CPPFLAGS="-I$dependency_prefix/include ${CPPFLAGS:-}"
+    export LDFLAGS="-L$dependency_prefix/lib ${LDFLAGS:-}"
+  else
+    export DYLD_LIBRARY_PATH="$dependency_prefix/lib:${DYLD_LIBRARY_PATH:-}"
+    make_command=$(brew --prefix make)/bin/gmake
+    make_shell=$(brew --prefix bash)/bin/bash
+    make_arguments+=("SHELL=$make_shell")
+  fi
+fi
 
 if [[ -e "$work_dir" ]]; then
   printf 'work directory already exists: %s\n' "$work_dir" >&2
@@ -96,37 +178,6 @@ while IFS= read -r patch_spec; do
     '. + [{path: $path, sha256: $sha256}]' <<<"$patch_evidence")
 done < <(jq -c --arg target "$target" \
   '.build.patches[] | select(.targets | index($target))' "$manifest")
-
-if [[ "$target" == macos-x86_64 ]]; then
-  export CC='clang -arch x86_64'
-  export CXX='clang++ -arch x86_64'
-  if command -v brew >/dev/null 2>&1; then
-    brew_prefix=$(brew --prefix)
-    dependency_prefix=${WINEFORGE_DEPS_PREFIX:-$brew_prefix}
-    [[ -d "$dependency_prefix/include" && -d "$dependency_prefix/lib" ]] || {
-      printf 'invalid macOS dependency prefix: %s\n' "$dependency_prefix" >&2
-      exit 69
-    }
-    llvm_prefix=$(brew --prefix llvm)
-    export AR="$llvm_prefix/bin/llvm-ar"
-    export RANLIB="$llvm_prefix/bin/llvm-ranlib"
-    export PATH="$llvm_prefix/bin:$(brew --prefix bison)/bin:$PATH"
-    export PKG_CONFIG_PATH="$dependency_prefix/lib/pkgconfig:$dependency_prefix/share/pkgconfig:${PKG_CONFIG_PATH:-}"
-    if [[ -z ${WINEFORGE_DEPS_PREFIX:-} ]]; then
-      export CPPFLAGS="-I$dependency_prefix/include ${CPPFLAGS:-}"
-      export LDFLAGS="-L$dependency_prefix/lib ${LDFLAGS:-}"
-    else
-      export DYLD_LIBRARY_PATH="$dependency_prefix/lib:${DYLD_LIBRARY_PATH:-}"
-      make_command=$(brew --prefix make)/bin/gmake
-      make_shell=$(brew --prefix bash)/bin/bash
-      [[ -x "$make_command" && -x "$make_shell" ]] || {
-        printf 'Homebrew make and bash are required with WINEFORGE_DEPS_PREFIX\n' >&2
-        exit 69
-      }
-      make_arguments+=("SHELL=$make_shell")
-    fi
-  fi
-fi
 
 (
   cd "$build_dir"

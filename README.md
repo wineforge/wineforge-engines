@@ -74,6 +74,23 @@ and macOS uses the native host toolchain:
 ./scripts/build-local.sh 24.0.7 macos-x86_64
 ```
 
+Local builds keep verified source archives in a content-addressed user cache,
+independently of disposable build work trees. Interrupted transfers retain a
+`.part` file and resume on the next attempt; every completed archive is checked
+against the manifest's SHA-256 digest before extraction. The defaults are
+`~/Library/Caches/Wineforge/engine-sources` on macOS and
+`$XDG_CACHE_HOME/wineforge/engine-sources` on Linux, falling back to
+`~/.cache/wineforge/engine-sources`. Override the location with
+`--source-cache DIRECTORY` or `WINEFORGE_SOURCE_CACHE`.
+Successful `wineforge prepare` runs may prune their temporary build work while
+leaving this verified source cache intact. Removing a cached digest is safe when
+no build is running; the next build downloads and verifies it again.
+
+The macOS builder checks the complete toolchain and dependency architecture
+before creating a work tree or downloading Wine. Its Homebrew formulae are
+`bison`, `freetype`, `gnutls`, `jq`, `llvm`, `mingw-w64`, and `pkg-config`.
+It reports all missing formulae together.
+
 Apple Silicon hosts may supply an isolated x86_64 library prefix with
 `WINEFORGE_DEPS_PREFIX`. Host build tools still come from Homebrew, while
 dependency flags are resolved from that prefix's pkg-config metadata. This
@@ -82,6 +99,9 @@ Homebrew `make` and `bash` are required for this mode so macOS does not strip
 the dependency environment before running build-time helpers.
 `build-local.sh` automatically re-executes under Rosetta and selects Apple's
 classic linker compatibility mode when the host is Apple Silicon.
+The ordinary Apple Silicon Homebrew prefix (`/opt/homebrew`) contains arm64
+libraries and cannot satisfy an x86_64 engine build. Use an Intel Homebrew
+installation in `/usr/local`, or provide an isolated x86_64 dependency prefix.
 
 Every build must initialize a disposable fresh prefix and run `cmd /c ver`
 before packaging. A compiler-successful engine that cannot load its Windows
