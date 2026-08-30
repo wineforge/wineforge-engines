@@ -240,6 +240,18 @@ if [[ -e "$macos_preflight_test/curl-called" ]] || \
   failures=$((failures + 1))
 fi
 
+loader_test="$preparation_test/macos-loader"
+mkdir -p -- "$loader_test/bin"
+printf 'synthetic loader\n' > "$loader_test/bin/wine"
+chmod 755 "$loader_test/bin/wine"
+"$repo_dir/scripts/normalize-macos-loader.sh" "$loader_test"
+"$repo_dir/scripts/normalize-macos-loader.sh" "$loader_test"
+if [[ ! -x "$loader_test/bin/wineloader" || ! -L "$loader_test/bin/wine" || \
+      $(readlink "$loader_test/bin/wine") != wineloader ]]; then
+  printf 'macOS loader names were not normalized idempotently\n' >&2
+  failures=$((failures + 1))
+fi
+
 reference_test="$preparation_test/reference"
 mkdir -p -- "$reference_test/stage/bin" "$reference_test/stage/share/wineforge"
 printf 'synthetic executable\n' > "$reference_test/stage/bin/wine"

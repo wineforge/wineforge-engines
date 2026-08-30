@@ -192,7 +192,11 @@ done < <(jq -c --arg target "$target" \
   "$make_command" "${make_arguments[@]}" install DESTDIR="$stage_dir"
 )
 
-wine_binary=$(find "$stage_dir" -type f \( -name wine -o -name wine64 \) -perm -111 -print | LC_ALL=C sort | head -1)
+if [[ "$target" == macos-x86_64 ]]; then
+  "$repo_dir/scripts/normalize-macos-loader.sh" "$stage_dir"
+fi
+
+wine_binary=$(find -L "$stage_dir" -type f \( -name wine -o -name wine64 \) -perm -111 -print | LC_ALL=C sort | head -1)
 [[ -n "$wine_binary" ]] || { printf 'installed Wine executable not found\n' >&2; exit 70; }
 binary_description=$(file "$wine_binary")
 case "$target:$binary_description" in

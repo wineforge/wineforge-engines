@@ -122,6 +122,12 @@ runtime is rejected and no artifact is emitted. CrossOver 24 additionally
 includes a compatibility backport that keeps delay-load IAT pointers in a
 writable `.didat` section when building with modern Binutils.
 
+On macOS, the staged runtime preserves CrossOver's internal `wineloader` name
+and exposes `wine` as a stable symlink for manifests and external tools. Some
+CrossOver configurations use the internal name when spawning child processes;
+shipping only the generic loader name can otherwise surface as a misleading
+`kernel32.dll` startup failure.
+
 macOS builds use Wine's combined `i386,x86_64` architecture mode and also run
 the 32-bit `syswow64\\cmd.exe` during acceptance. This keeps the Unix runtime
 64-bit for current macOS while proving that PE32 applications work before an
