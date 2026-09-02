@@ -94,6 +94,12 @@ jobs:
           format: spdx-json
           output-file: dist/wineforge-engine-${{ inputs.version }}-${{ matrix.target }}.spdx.json
           upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate SPDX document
+        run: |
+          jq -e '.spdxVersion == "SPDX-2.3" and .SPDXID == "SPDXRef-DOCUMENT" and (.documentNamespace | length > 0)' \
+            dist/wineforge-engine-${{ inputs.version }}-${{ matrix.target }}.spdx.json > /dev/null
 
       - name: Attest runtime provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
