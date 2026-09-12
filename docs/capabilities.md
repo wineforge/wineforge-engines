@@ -17,12 +17,19 @@ not infer support from a source manifest's planned declarations.
 
 ## Version 1 identifiers
 
-- `input.mapping` covers per-application keyboard mapping, keyboard-driven
-  scrolling, precise and horizontal scrolling, momentum, and drag scrolling.
-- `macos.window-isolation` covers process-local handling of Wine-owned transient
-  windows across application activation and macOS Spaces. Version 1 explicitly
-  requires no observation of other processes' windows and no Accessibility,
-  Screen Recording, or Input Monitoring permission.
+- `input.keyboard.preset.mac-native` covers the Mac driver's side-specific
+  Command-to-Control and Option-to-Alt policy.
+- `input.keyboard.mapping` covers arbitrary chord-to-key output.
+- `input.scroll.keyboard-to-scroll` covers bounded process-local rules that
+  translate key-down events to horizontal or vertical wheel input.
+- `input.scroll.precise`, `input.scroll.horizontal`, and
+  `input.scroll.momentum` describe physical pointing-device scroll behavior.
+- `input.scroll.page`, `input.scroll.edge`, and `input.scroll.drag` are separate
+  contracts because they need viewport or pointer-button lifecycle semantics.
+- `macos.window-isolation.strict` covers process-local handling of Wine-owned
+  transient windows across application activation and macOS Spaces. Version 1
+  explicitly requires no observation of other processes' windows and no
+  Accessibility, Screen Recording, or Input Monitoring permission.
 - `host.bridge` describes the engine transport primitives that a Wineforge
   runtime may compose with a separately authorized native service. Advertising
   the primitive does not authorize a native command or MCP server.
@@ -50,7 +57,7 @@ The static probe is intentionally process-free:
 
 ```sh
 ./scripts/probe-capabilities.py ENGINE_ROOT
-./scripts/probe-capabilities.py ENGINE_ROOT --id macos.window-isolation
+./scripts/probe-capabilities.py ENGINE_ROOT --id macos.window-isolation.strict
 ```
 
 It reads only engine-owned metadata. It does not launch Wine, enumerate host

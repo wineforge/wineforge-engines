@@ -15,6 +15,8 @@ SUPPORTED_IDS = {
     "input.scroll.precise",
     "input.scroll.horizontal",
     "input.scroll.momentum",
+    "input.scroll.page",
+    "input.scroll.edge",
     "input.scroll.drag",
     "macos.window-isolation.strict",
     "host.bridge",

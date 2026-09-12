@@ -1,0 +1,199 @@
+From: Wineforge contributors
+Subject: [PATCH] winemac: add bounded keyboard-to-scroll rules
+
+Accept a small process-local rules table from the launcher and translate
+matching key-down events directly into the Mac driver's internal scroll event.
+The translation does not synthesize an NSEvent, install an event tap, or observe
+input delivered to another process.
+
+The versioned environment grammar is documented by Wineforge.  Invalid or
+oversized input disables the whole table rather than partially applying policy.
+
+--- a/dlls/winemac.drv/macdrv_cocoa.h
++++ b/dlls/winemac.drv/macdrv_cocoa.h
+@@ -135,6 +135,16 @@
+     MACDRV_HOTKEY_SUCCESS,
+     MACDRV_HOTKEY_ALREADY_REGISTERED,
+     MACDRV_HOTKEY_FAILURE,
++};
++
++#define MACDRV_MAX_INPUT_SCROLL_RULES 32
++
++struct macdrv_input_scroll_rule {
++    unsigned short keycode;
++    unsigned short modifiers;
++    int x_scroll;
++    int y_scroll;
++    int allow_repeat;
+ };
+ 
+ typedef struct __TISInputSource *TISInputSourceRef;
+@@ -172,6 +182,8 @@
+ extern int use_confinement_cursor_clipping;
+ extern int cursor_clipping_locks_windows;
+ extern int use_precise_scrolling;
++extern unsigned int input_scroll_rule_count;
++extern struct macdrv_input_scroll_rule input_scroll_rules[MACDRV_MAX_INPUT_SCROLL_RULES];
+ extern int gl_surface_mode;
+ extern CFDictionaryRef localized_strings;
+ extern int retina_enabled;  /* Whether Retina mode is enabled via registry setting. */
+--- a/dlls/winemac.drv/macdrv_main.c
++++ b/dlls/winemac.drv/macdrv_main.c
+@@ -27,6 +27,8 @@
+ #include "config.h"
+ 
+ #include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
+ 
+ #include <Security/AuthSession.h>
+ #include <IOKit/pwr_mgt/IOPMLib.h>
+@@ -56,6 +58,52 @@
+         WARN("Ignoring invalid %s value %s. Expected true or false.\n", name, debugstr_a(value));
+ }
+ 
++static void setup_input_scroll_rules(void)
++{
++    const char *value = getenv("WINEFORGE_INPUT_SCROLL_RULES_V1");
++    char *copy, *context = NULL, *token;
++
++    input_scroll_rule_count = 0;
++    if (!value || !value[0]) return;
++    if (strlen(value) > 2048)
++    {
++        WARN("Ignoring oversized WINEFORGE_INPUT_SCROLL_RULES_V1.\n");
++        return;
++    }
++    if (value[0] == ';' || value[strlen(value) - 1] == ';' || strstr(value, ";;"))
++    {
++        WARN("Ignoring invalid WINEFORGE_INPUT_SCROLL_RULES_V1 configuration.\n");
++        return;
++    }
++    if (!(copy = strdup(value))) return;
++
++    for (token = strtok_r(copy, ";", &context); token;
++         token = strtok_r(NULL, ";", &context))
++    {
++        unsigned int keycode, modifiers, allow_repeat;
++        int x_scroll, y_scroll;
++        char trailing;
++
++        if (input_scroll_rule_count == MACDRV_MAX_INPUT_SCROLL_RULES ||
++            sscanf(token, "%u:%u:%d:%d:%u%c", &keycode, &modifiers, &x_scroll,
++                   &y_scroll, &allow_repeat, &trailing) != 5 ||
++            keycode > 127 || modifiers > 15 || allow_repeat > 1 ||
++            x_scroll < -1200 || x_scroll > 1200 ||
++            y_scroll < -1200 || y_scroll > 1200 ||
++            (!x_scroll && !y_scroll))
++        {
++            WARN("Ignoring invalid WINEFORGE_INPUT_SCROLL_RULES_V1 configuration.\n");
++            input_scroll_rule_count = 0;
++            break;
++        }
++
++        input_scroll_rules[input_scroll_rule_count++] = (struct macdrv_input_scroll_rule) {
++            keycode, modifiers, x_scroll, y_scroll, allow_repeat
++        };
++    }
++    free(copy);
++}
++
+ C_ASSERT(NUM_EVENT_TYPES <= sizeof(macdrv_event_mask) * 8);
+ 
+ int topmost_float_inactive = TOPMOST_FLOAT_INACTIVE_NONFULLSCREEN;
+@@ -78,6 +126,8 @@
+ int use_confinement_cursor_clipping = TRUE;
+ int cursor_clipping_locks_windows = TRUE;
+ int use_precise_scrolling = TRUE;
++unsigned int input_scroll_rule_count;
++struct macdrv_input_scroll_rule input_scroll_rules[MACDRV_MAX_INPUT_SCROLL_RULES];
+ int gl_surface_mode = GL_SURFACE_IN_FRONT_OPAQUE;
+ int retina_enabled = FALSE;
+ int enable_app_nap = FALSE;
+@@ -428,6 +478,8 @@
+     if (!get_config_key(hkey, appkey, "EnableAppNap", buffer, sizeof(buffer)))
+         enable_app_nap = IS_OPTION_TRUE(buffer[0]);
+ 
++    setup_input_scroll_rules();
++
+     /* Don't use appkey.  The DPI and monitor sizes should be consistent for all
+        processes in the prefix. */
+     if (!get_config_key(hkey, NULL, "RetinaMode", buffer, sizeof(buffer)))
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -159,6 +159,19 @@
+     return new_modifiers;
+ }
+ 
++static unsigned short compact_input_rule_modifiers(NSUInteger modifiers)
++{
++    unsigned short compact = 0;
++
++    if (modifiers & NX_SHIFTMASK) compact |= 1;
++    if (modifiers & NX_CONTROLMASK) compact |= 2;
++    if (modifiers & NX_ALTERNATEMASK) compact |= 4;
++    if (modifiers & NX_COMMANDMASK) compact |= 8;
++    return compact;
++}
++
++static BOOL input_scroll_keys_down[128];
++
+ static inline BOOL stage_manager_enabled(void)
+ {
+     /* There is no documented way to determine if Stage Manager is enabled,
+@@ -2170,10 +2183,54 @@
+ 
+     - (void) postKeyEvent:(NSEvent *)theEvent
+     {
++        NSUInteger modifiers = adjusted_modifiers_for_settings([theEvent modifierFlags]);
++        unsigned short compact_modifiers = compact_input_rule_modifiers(modifiers);
++        unsigned short keycode = [theEvent keyCode];
++        unsigned int i;
++
++        if ([theEvent type] == NSEventTypeKeyUp && keycode < 128 && input_scroll_keys_down[keycode])
++        {
++            input_scroll_keys_down[keycode] = FALSE;
++            return;
++        }
++        if ([theEvent type] == NSEventTypeKeyDown && keycode < 128)
++            input_scroll_keys_down[keycode] = FALSE;
++
++        if ([theEvent type] == NSEventTypeKeyDown)
++        {
++            for (i = 0; i < input_scroll_rule_count; i++)
++            {
++                const struct macdrv_input_scroll_rule *rule = &input_scroll_rules[i];
++
++                if (keycode == rule->keycode && compact_modifiers == rule->modifiers)
++                {
++                    input_scroll_keys_down[keycode] = TRUE;
++                    CGEventRef cgevent = [theEvent CGEvent];
++                    if (cgevent && (![theEvent isARepeat] || rule->allow_repeat))
++                    {
++                        WineApplicationController* controller =
++                            [WineApplicationController sharedController];
++                        CGPoint pt = cgpoint_win_from_mac(CGEventGetLocation(cgevent));
++                        macdrv_event* event = macdrv_create_event(MOUSE_SCROLL, self);
++
++                        event->mouse_scroll.x = floor(pt.x);
++                        event->mouse_scroll.y = floor(pt.y);
++                        event->mouse_scroll.x_scroll = rule->x_scroll;
++                        event->mouse_scroll.y_scroll = rule->y_scroll;
++                        event->mouse_scroll.time_ms =
++                            [controller ticksForEventTime:[theEvent timestamp]];
++                        [queue postEvent:event];
++                        macdrv_release_event(event);
++                    }
++                    return;
++                }
++            }
++        }
++
+         [self flagsChanged:theEvent];
+         [self postKey:[theEvent keyCode]
+               pressed:[theEvent type] == NSEventTypeKeyDown
+-            modifiers:adjusted_modifiers_for_settings([theEvent modifierFlags])
++            modifiers:modifiers
+                 event:theEvent];
+     }
+ 
