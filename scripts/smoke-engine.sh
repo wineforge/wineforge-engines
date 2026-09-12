@@ -19,13 +19,14 @@ wine="$engine_root/$wine_relative"
 [[ -x "$wine" ]] || { printf 'Wine executable is not executable: %s\n' "$wine" >&2; exit 66; }
 wineserver="$engine_root/bin/wineserver"
 [[ -x "$wineserver" ]] || { printf 'wineserver is not executable: %s\n' "$wineserver" >&2; exit 66; }
-if [[ "$wow64_mode" == --require-wow64 && ! -x "$engine_root/bin/wineloader" ]]; then
+if [[ $(uname -s) == Darwin && "$wow64_mode" == --require-wow64 && ! -x "$engine_root/bin/wineloader" ]]; then
   printf 'CrossOver macOS loader is missing: %s\n' "$engine_root/bin/wineloader" >&2
   printf 'the staged runtime must retain wineloader for child process startup\n' >&2
   exit 70
 fi
 
 prefix=$(mktemp -d "${TMPDIR:-/tmp}/wineforge-engine-smoke.XXXXXX")
+export WINEARCH=win64
 cleanup() {
   WINEPREFIX="$prefix" "$wineserver" -k >/dev/null 2>&1 || true
   rm -rf -- "$prefix"

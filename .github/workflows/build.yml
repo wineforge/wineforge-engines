@@ -63,7 +63,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            bison build-essential flex gcc-multilib g++-multilib \
+            bison build-essential flex gcc-multilib g++-multilib mingw-w64 xvfb xauth \
             jq libfreetype-dev libgnutls28-dev libx11-dev \
             libxext-dev libxrender-dev libxrandr-dev libxi-dev \
             libxcursor-dev libxfixes-dev pkg-config python3
@@ -81,7 +81,12 @@ jobs:
       - name: Build and package runtime
         env:
           WINEFORGE_JOBS: "3"
-        run: ./scripts/build-engine.sh "${{ inputs.version }}" "${{ matrix.target }}"
+        run: |
+          if [[ "${{ runner.os }}" == Linux ]]; then
+            xvfb-run -a ./scripts/build-engine.sh "${{ inputs.version }}" "${{ matrix.target }}"
+          else
+            ./scripts/build-engine.sh "${{ inputs.version }}" "${{ matrix.target }}"
+          fi
 
       - name: Add dependency inventory to build evidence
         run: |

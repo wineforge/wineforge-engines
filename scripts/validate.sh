@@ -334,6 +334,12 @@ if ! grep -q '^cross_cflags=-g -O2 -std=gnu17$' <<<"$dry_run"; then
   failures=$((failures + 1))
 fi
 
+linux_dry_run=$(DRY_RUN=1 "$repo_dir/scripts/build-engine.sh" 24.0.7 linux-x86_64)
+if [[ "$linux_dry_run" != *--enable-archs=i386\\,x86_64* && "$linux_dry_run" != *--enable-archs=i386,x86_64* ]]; then
+  printf 'Linux modern WoW64 is not configured\n' >&2
+  failures=$((failures + 1))
+fi
+
 if rg -n -i '(private application|customer name|personal path)' "$repo_dir" \
   --glob '!**/scripts/validate.sh' >/dev/null; then
   printf 'repository-neutrality placeholder found in tracked content\n' >&2
