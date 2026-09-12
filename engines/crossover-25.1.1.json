@@ -16,7 +16,14 @@
   "build": {
     "source_subdirectory": "sources/wine",
     "targets": ["linux-x86_64", "macos-x86_64"],
-    "patches": []
+    "patches": [
+      {
+        "path": "patches/25.1.1/0001-winemac-strict-window-isolation.patch",
+        "sha256": "30d9e8178eec3d03c006fcf4a70d8cbcab4c4d8abcd537fe05e72ed3c9f1bdd1",
+        "provenance": "Wineforge process-local policy for hiding and restoring Wine-owned floating windows when the application resigns or regains activity.",
+        "targets": ["macos-x86_64"]
+      }
+    ]
   },
   "capabilities": {
     "protocol": 1,
@@ -38,7 +45,8 @@
       {
         "id": "macos.window-isolation",
         "version": 1,
-        "state": "planned",
+        "state": "provided",
+        "evidence_patches": ["patches/25.1.1/0001-winemac-strict-window-isolation.patch"],
         "targets": ["macos-x86_64"],
         "scope": "process",
         "privacy": {
