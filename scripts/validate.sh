@@ -402,6 +402,7 @@ python3 "$repo_dir/scripts/generate-capabilities.py" \
 if ! jq -e '
   .schema_version == 1 and
   .kind == "wineforge-engine-capabilities" and
+  .engine_id == "crossover-25.1.1-macos-x86_64" and
   .protocol == 1 and
   .target == "macos-x86_64" and
   ([.provided[].id] == [

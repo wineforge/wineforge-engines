@@ -68,7 +68,7 @@ def runtime_document(manifest: dict[str, object], target: str) -> dict[str, obje
     return {
         "schema_version": 1,
         "kind": "wineforge-engine-capabilities",
-        "engine_id": manifest["id"],
+        "engine_id": f'{manifest["id"]}-{target}',
         "target": target,
         "protocol": 1,
         "provided": provided,
