@@ -304,17 +304,23 @@ for manifest in "$repo_dir"/engines/crossover-*.json; do
     (.capabilities.declarations | type == "array") and
     ([.capabilities.declarations[].id] | length == (unique | length)) and
     (all(.capabilities.declarations[]; . as $cap |
-      ($cap.id as $id | ["input.mapping", "macos.window-isolation", "host.bridge"] | index($id) != null) and
+      ($cap.id as $id | [
+        "input.keyboard.preset.mac-native", "input.keyboard.mapping",
+        "input.scroll.keyboard-to-scroll", "input.scroll.precise",
+        "input.scroll.horizontal", "input.scroll.momentum", "input.scroll.drag",
+        "macos.window-isolation.strict", "host.bridge"
+      ] | index($id) != null) and
       ($cap.version == 1) and
       ($cap.state as $state | ["planned", "provided"] | index($state) != null) and
       ($cap.targets | type == "array" and length > 0) and
       (($cap.targets - ["linux-x86_64", "macos-x86_64"]) | length == 0) and
-      (if $cap.id == "input.mapping" then
-         ($cap.features | keys | sort == ["drag_scroll", "horizontal_scroll", "keyboard", "keyboard_to_scroll", "momentum", "precise_scroll"]) and
-         all($cap.features[]; type == "boolean")
-       elif $cap.id == "macos.window-isolation" then
+      (if $cap.id == "macos.window-isolation.strict" then
          ($cap.targets == ["macos-x86_64"]) and
          ($cap.scope == "process") and
+         ($cap.transport == {
+           kind: "environment",
+           variables: ["WINEFORGE_STRICT_WINDOW_ISOLATION"]
+         }) and
          ($cap.privacy == {
            requires_external_window_observation: false,
            requires_accessibility: false,
@@ -324,7 +330,7 @@ for manifest in "$repo_dir"/engines/crossover-*.json; do
        elif $cap.id == "host.bridge" then
          ($cap.transports | type == "array" and length > 0) and
          (($cap.transports - ["unix-socket", "named-pipe"]) | length == 0)
-       else false end) and
+       else ($cap.targets == ["macos-x86_64"]) end) and
       (if $cap.state == "provided" then
          ($cap.evidence_patches | type == "array" and length > 0) and
          ([$cap.evidence_patches[] as $evidence |
@@ -355,6 +361,24 @@ for manifest in "$repo_dir"/engines/crossover-*.json; do
   done < <(jq -c '.build.patches[]' "$manifest")
 done
 
+for input_patch in \
+  "$repo_dir/patches/24.0.7/0009-winemac-process-input-configuration.patch" \
+  "$repo_dir/patches/25.1.1/0002-winemac-process-input-configuration.patch"; do
+  for variable in \
+    WINEFORGE_INPUT_LEFT_COMMAND_IS_CTRL \
+    WINEFORGE_INPUT_RIGHT_COMMAND_IS_CTRL \
+    WINEFORGE_INPUT_LEFT_OPTION_IS_ALT \
+    WINEFORGE_INPUT_RIGHT_OPTION_IS_ALT \
+    WINEFORGE_INPUT_PRECISE_SCROLLING \
+    WINEFORGE_STRICT_WINDOW_ISOLATION; do
+    if ! grep -Fq "$variable" "$input_patch"; then
+      printf 'input patch is missing process-local transport %s: %s\n' \
+        "$variable" "$input_patch" >&2
+      failures=$((failures + 1))
+    fi
+  done
+done
+
 capability_test="$preparation_test/capabilities"
 mkdir -p -- "$capability_test/stage/share/wineforge"
 python3 "$repo_dir/scripts/generate-capabilities.py" \
@@ -365,15 +389,21 @@ if ! jq -e '
   .kind == "wineforge-engine-capabilities" and
   .protocol == 1 and
   .target == "macos-x86_64" and
-  ([.provided[].id] == ["macos.window-isolation"]) and
-  (.provided[0].state == "provided") and
-  (.provided[0].scope == "process")
+  ([.provided[].id] == [
+    "input.keyboard.preset.mac-native",
+    "input.scroll.precise",
+    "input.scroll.horizontal",
+    "input.scroll.momentum",
+    "macos.window-isolation.strict"
+  ]) and
+  (.provided[-1].state == "provided") and
+  (.provided[-1].scope == "process")
 ' "$capability_test/stage/share/wineforge/capabilities.json" >/dev/null; then
   printf 'runtime capability metadata does not match provided declarations\n' >&2
   failures=$((failures + 1))
 fi
 if "$repo_dir/scripts/probe-capabilities.py" "$capability_test/stage" \
-  --id input.mapping >/dev/null 2>&1; then
+  --id input.keyboard.mapping >/dev/null 2>&1; then
   printf 'capability probe reported an unprovided capability\n' >&2
   failures=$((failures + 1))
 fi
@@ -381,19 +411,19 @@ provided_manifest="$capability_test/provided.json"
 jq '
   .build.patches += [{path: "patches/25.1.1/input.patch", sha256: ("0" * 64),
     provenance: "fixture", targets: ["macos-x86_64"]}] |
-  .capabilities.declarations[0].state = "provided" |
-  .capabilities.declarations[0].evidence_patches = ["patches/25.1.1/input.patch"]
+  .capabilities.declarations[1].state = "provided" |
+  .capabilities.declarations[1].evidence_patches = ["patches/25.1.1/input.patch"]
 ' "$repo_dir/engines/crossover-25.1.1.json" > "$provided_manifest"
 python3 "$repo_dir/scripts/generate-capabilities.py" \
   "$provided_manifest" macos-x86_64 \
   "$capability_test/stage/share/wineforge/capabilities.json"
 if ! "$repo_dir/scripts/probe-capabilities.py" "$capability_test/stage" \
-  --id input.mapping | jq -e '.id == "input.mapping" and .version == 1' >/dev/null; then
+  --id input.keyboard.mapping | jq -e '.id == "input.keyboard.mapping" and .version == 1' >/dev/null; then
   printf 'provided capability could not be probed\n' >&2
   failures=$((failures + 1))
 fi
 invalid_manifest="$capability_test/invalid.json"
-jq 'del(.capabilities.declarations[0].evidence_patches)' \
+jq 'del(.capabilities.declarations[1].evidence_patches)' \
   "$provided_manifest" > "$invalid_manifest"
 if python3 "$repo_dir/scripts/generate-capabilities.py" \
   "$invalid_manifest" macos-x86_64 "$capability_test/invalid-output.json" \

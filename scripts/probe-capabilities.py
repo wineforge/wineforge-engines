@@ -8,6 +8,19 @@ import json
 from pathlib import Path
 
 
+SUPPORTED_IDS = {
+    "input.keyboard.preset.mac-native",
+    "input.keyboard.mapping",
+    "input.scroll.keyboard-to-scroll",
+    "input.scroll.precise",
+    "input.scroll.horizontal",
+    "input.scroll.momentum",
+    "input.scroll.drag",
+    "macos.window-isolation.strict",
+    "host.bridge",
+}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("engine_root", type=Path)
@@ -25,7 +38,7 @@ def main() -> None:
         if not isinstance(item, dict):
             raise SystemExit("invalid engine capability declaration")
         item_id = item.get("id")
-        if item_id not in {"input.mapping", "macos.window-isolation", "host.bridge"}:
+        if item_id not in SUPPORTED_IDS:
             raise SystemExit(f"unknown engine capability: {item_id}")
         if item_id in seen:
             raise SystemExit(f"duplicate engine capability: {item_id}")

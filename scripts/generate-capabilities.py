@@ -8,7 +8,17 @@ import json
 from pathlib import Path
 
 
-SUPPORTED_IDS = {"input.mapping", "macos.window-isolation", "host.bridge"}
+SUPPORTED_IDS = {
+    "input.keyboard.preset.mac-native",
+    "input.keyboard.mapping",
+    "input.scroll.keyboard-to-scroll",
+    "input.scroll.precise",
+    "input.scroll.horizontal",
+    "input.scroll.momentum",
+    "input.scroll.drag",
+    "macos.window-isolation.strict",
+    "host.bridge",
+}
 SUPPORTED_TARGETS = {"linux-x86_64", "macos-x86_64"}
 
 

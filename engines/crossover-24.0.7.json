@@ -64,6 +64,12 @@
         "sha256": "b440679bf99efd9817b08da7c4a92f727b1452a63e40d9186fb28eb6cead9013",
         "provenance": "Wineforge process-local policy for hiding and restoring Wine-owned floating windows when the application resigns or regains activity.",
         "targets": ["macos-x86_64"]
+      },
+      {
+        "path": "patches/24.0.7/0009-winemac-process-input-configuration.patch",
+        "sha256": "fa9e93e81412b90c2df445e8c324602a6592c47f87553e197445f15c97d27f3c",
+        "provenance": "Wineforge process-local transport for the pinned Mac driver's existing modifier mapping and precise physical scrolling policies.",
+        "targets": ["macos-x86_64"]
       }
     ]
   },
@@ -71,26 +77,78 @@
     "protocol": 1,
     "declarations": [
       {
-        "id": "input.mapping",
+        "id": "input.keyboard.preset.mac-native",
         "version": 1,
-        "state": "planned",
+        "state": "provided",
+        "evidence_patches": ["patches/24.0.7/0009-winemac-process-input-configuration.patch"],
         "targets": ["macos-x86_64"],
-        "features": {
-          "keyboard": true,
-          "keyboard_to_scroll": true,
-          "precise_scroll": true,
-          "horizontal_scroll": true,
-          "momentum": true,
-          "drag_scroll": true
+        "transport": {
+          "kind": "environment",
+          "variables": [
+            "WINEFORGE_INPUT_LEFT_COMMAND_IS_CTRL",
+            "WINEFORGE_INPUT_RIGHT_COMMAND_IS_CTRL",
+            "WINEFORGE_INPUT_LEFT_OPTION_IS_ALT",
+            "WINEFORGE_INPUT_RIGHT_OPTION_IS_ALT"
+          ]
         }
       },
       {
-        "id": "macos.window-isolation",
+        "id": "input.keyboard.mapping",
+        "version": 1,
+        "state": "planned",
+        "targets": ["macos-x86_64"]
+      },
+      {
+        "id": "input.scroll.keyboard-to-scroll",
+        "version": 1,
+        "state": "planned",
+        "targets": ["macos-x86_64"]
+      },
+      {
+        "id": "input.scroll.precise",
         "version": 1,
         "state": "provided",
-        "evidence_patches": ["patches/24.0.7/0008-winemac-strict-window-isolation.patch"],
+        "evidence_patches": ["patches/24.0.7/0009-winemac-process-input-configuration.patch"],
+        "targets": ["macos-x86_64"],
+        "transport": {
+          "kind": "environment",
+          "variables": ["WINEFORGE_INPUT_PRECISE_SCROLLING"]
+        }
+      },
+      {
+        "id": "input.scroll.horizontal",
+        "version": 1,
+        "state": "provided",
+        "evidence_patches": ["patches/24.0.7/0009-winemac-process-input-configuration.patch"],
+        "targets": ["macos-x86_64"]
+      },
+      {
+        "id": "input.scroll.momentum",
+        "version": 1,
+        "state": "provided",
+        "evidence_patches": ["patches/24.0.7/0009-winemac-process-input-configuration.patch"],
+        "targets": ["macos-x86_64"]
+      },
+      {
+        "id": "input.scroll.drag",
+        "version": 1,
+        "state": "planned",
+        "targets": ["macos-x86_64"]
+      },
+      {
+        "id": "macos.window-isolation.strict",
+        "version": 1,
+        "state": "provided",
+        "evidence_patches": [
+          "patches/24.0.7/0008-winemac-strict-window-isolation.patch",
+          "patches/24.0.7/0009-winemac-process-input-configuration.patch"
+        ],
         "targets": ["macos-x86_64"],
         "scope": "process",
+        "transport": {
+          "kind": "environment",
+          "variables": ["WINEFORGE_STRICT_WINDOW_ISOLATION"]
+        },
         "privacy": {
           "requires_external_window_observation": false,
           "requires_accessibility": false,

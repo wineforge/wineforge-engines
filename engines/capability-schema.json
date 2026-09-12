@@ -6,116 +6,104 @@
     "target": {
       "enum": ["linux-x86_64", "macos-x86_64"]
     },
-    "state": {
-      "enum": ["planned", "provided"]
+    "capabilityId": {
+      "enum": [
+        "input.keyboard.preset.mac-native",
+        "input.keyboard.mapping",
+        "input.scroll.keyboard-to-scroll",
+        "input.scroll.precise",
+        "input.scroll.horizontal",
+        "input.scroll.momentum",
+        "input.scroll.drag",
+        "macos.window-isolation.strict",
+        "host.bridge"
+      ]
     },
-    "inputMapping": {
+    "transport": {
       "type": "object",
       "additionalProperties": false,
-      "allOf": [
-        {
-          "if": { "properties": { "state": { "const": "provided" } } },
-          "then": { "required": ["evidence_patches"] }
-        }
-      ],
-      "required": ["id", "version", "state", "targets", "features"],
+      "required": ["kind", "variables"],
       "properties": {
-        "id": { "const": "input.mapping" },
-        "version": { "const": 1 },
-        "state": { "$ref": "#/$defs/state" },
-        "evidence_patches": {
-          "type": "array", "minItems": 1, "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^patches/[0-9]+\\.[0-9]+\\.[0-9]+/[a-z0-9][a-z0-9.-]+\\.patch$" }
-        },
-        "targets": {
-          "type": "array", "minItems": 1, "uniqueItems": true,
-          "items": { "$ref": "#/$defs/target" }
-        },
-        "features": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["keyboard", "keyboard_to_scroll", "precise_scroll", "horizontal_scroll", "momentum", "drag_scroll"],
-          "properties": {
-            "keyboard": { "type": "boolean" },
-            "keyboard_to_scroll": { "type": "boolean" },
-            "precise_scroll": { "type": "boolean" },
-            "horizontal_scroll": { "type": "boolean" },
-            "momentum": { "type": "boolean" },
-            "drag_scroll": { "type": "boolean" }
+        "kind": { "const": "environment" },
+        "variables": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "WINEFORGE_INPUT_LEFT_COMMAND_IS_CTRL",
+              "WINEFORGE_INPUT_RIGHT_COMMAND_IS_CTRL",
+              "WINEFORGE_INPUT_LEFT_OPTION_IS_ALT",
+              "WINEFORGE_INPUT_RIGHT_OPTION_IS_ALT",
+              "WINEFORGE_INPUT_PRECISE_SCROLLING",
+              "WINEFORGE_STRICT_WINDOW_ISOLATION"
+            ]
           }
         }
       }
     },
-    "macosWindowIsolation": {
+    "sourceDeclaration": {
       "type": "object",
       "additionalProperties": false,
       "allOf": [
         {
           "if": { "properties": { "state": { "const": "provided" } } },
           "then": { "required": ["evidence_patches"] }
+        },
+        {
+          "if": { "properties": { "id": { "const": "macos.window-isolation.strict" } } },
+          "then": { "required": ["scope", "privacy", "transport"] }
+        },
+        {
+          "if": { "properties": { "id": { "const": "host.bridge" } } },
+          "then": { "required": ["transports"] }
         }
       ],
-      "required": ["id", "version", "state", "targets", "scope", "privacy"],
+      "required": ["id", "version", "state", "targets"],
       "properties": {
-        "id": { "const": "macos.window-isolation" },
+        "id": { "$ref": "#/$defs/capabilityId" },
         "version": { "const": 1 },
-        "state": { "$ref": "#/$defs/state" },
+        "state": { "enum": ["planned", "provided"] },
         "evidence_patches": {
-          "type": "array", "minItems": 1, "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^patches/[0-9]+\\.[0-9]+\\.[0-9]+/[a-z0-9][a-z0-9.-]+\\.patch$" }
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^patches/[0-9]+\\.[0-9]+\\.[0-9]+/[a-z0-9][a-z0-9.-]+\\.patch$"
+          }
         },
         "targets": {
-          "type": "array", "minItems": 1, "uniqueItems": true,
-          "items": { "const": "macos-x86_64" }
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/target" }
         },
+        "transport": { "$ref": "#/$defs/transport" },
         "scope": { "const": "process" },
         "privacy": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["requires_external_window_observation", "requires_accessibility", "requires_screen_recording", "requires_input_monitoring"],
+          "required": [
+            "requires_external_window_observation",
+            "requires_accessibility",
+            "requires_screen_recording",
+            "requires_input_monitoring"
+          ],
           "properties": {
             "requires_external_window_observation": { "const": false },
             "requires_accessibility": { "const": false },
             "requires_screen_recording": { "const": false },
             "requires_input_monitoring": { "const": false }
           }
-        }
-      }
-    },
-    "hostBridge": {
-      "type": "object",
-      "additionalProperties": false,
-      "allOf": [
-        {
-          "if": { "properties": { "state": { "const": "provided" } } },
-          "then": { "required": ["evidence_patches"] }
-        }
-      ],
-      "required": ["id", "version", "state", "targets", "transports"],
-      "properties": {
-        "id": { "const": "host.bridge" },
-        "version": { "const": 1 },
-        "state": { "$ref": "#/$defs/state" },
-        "evidence_patches": {
-          "type": "array", "minItems": 1, "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^patches/[0-9]+\\.[0-9]+\\.[0-9]+/[a-z0-9][a-z0-9.-]+\\.patch$" }
-        },
-        "targets": {
-          "type": "array", "minItems": 1, "uniqueItems": true,
-          "items": { "$ref": "#/$defs/target" }
         },
         "transports": {
-          "type": "array", "minItems": 1, "uniqueItems": true,
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
           "items": { "enum": ["unix-socket", "named-pipe"] }
         }
       }
-    },
-    "sourceDeclaration": {
-      "oneOf": [
-        { "$ref": "#/$defs/inputMapping" },
-        { "$ref": "#/$defs/macosWindowIsolation" },
-        { "$ref": "#/$defs/hostBridge" }
-      ]
     },
     "providedDeclaration": {
       "allOf": [
