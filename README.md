@@ -43,8 +43,11 @@ checks, and existing release assets are not changed retroactively.
 
 Each artifact also includes a `*.runtime.json` manifest for Wineforge. The
 manifest contains the archive digest, target platform, translation mode and the
-runtime-relative Wine executable path. It is generated only after packaging so
-its digest describes the exact archive delivered to the user.
+runtime-relative Wine executable path. It also embeds the same target-specific
+capability document installed at `share/wineforge/capabilities.json`. It is
+generated only after packaging so its digest describes the exact archive
+delivered to the user. See [Engine capabilities](docs/capabilities.md) for the
+negotiation and trust model.
 
 The pinned source digests were independently calculated from the official
 CodeWeavers HTTPS archive on 2026-08-13. CodeWeavers did not publish checksum
@@ -163,6 +166,13 @@ builder image and a versioned macOS toolchain bundle; see
 shasum -a 256 -c wineforge-engine-25.1.1-macos-x86_64.tar.gz.sha256
 gh attestation verify wineforge-engine-25.1.1-macos-x86_64.tar.gz \
   --repo OWNER/wineforge-engines
+```
+
+Inspect an unpacked engine without executing Wine:
+
+```sh
+./scripts/probe-capabilities.py /path/to/wineforge-engine
+./scripts/probe-capabilities.py /path/to/wineforge-engine --id input.mapping
 ```
 
 ## Licensing

@@ -58,6 +58,52 @@
         "sha256": "4d7844926d294d1d31c128ca972fa85ab1a8014bb8ce03fd188fb7d8ec5c0f94",
         "provenance": "Wineforge privacy default verified on macOS: direct IOHID controller access is opt-in so fresh Wine prefixes do not request Input Monitoring permission.",
         "targets": ["macos-x86_64"]
+      },
+      {
+        "path": "patches/24.0.7/0008-winemac-strict-window-isolation.patch",
+        "sha256": "b440679bf99efd9817b08da7c4a92f727b1452a63e40d9186fb28eb6cead9013",
+        "provenance": "Wineforge process-local policy for hiding and restoring Wine-owned floating windows when the application resigns or regains activity.",
+        "targets": ["macos-x86_64"]
+      }
+    ]
+  },
+  "capabilities": {
+    "protocol": 1,
+    "declarations": [
+      {
+        "id": "input.mapping",
+        "version": 1,
+        "state": "planned",
+        "targets": ["macos-x86_64"],
+        "features": {
+          "keyboard": true,
+          "keyboard_to_scroll": true,
+          "precise_scroll": true,
+          "horizontal_scroll": true,
+          "momentum": true,
+          "drag_scroll": true
+        }
+      },
+      {
+        "id": "macos.window-isolation",
+        "version": 1,
+        "state": "provided",
+        "evidence_patches": ["patches/24.0.7/0008-winemac-strict-window-isolation.patch"],
+        "targets": ["macos-x86_64"],
+        "scope": "process",
+        "privacy": {
+          "requires_external_window_observation": false,
+          "requires_accessibility": false,
+          "requires_screen_recording": false,
+          "requires_input_monitoring": false
+        }
+      },
+      {
+        "id": "host.bridge",
+        "version": 1,
+        "state": "planned",
+        "targets": ["linux-x86_64", "macos-x86_64"],
+        "transports": ["unix-socket", "named-pipe"]
       }
     ]
   },

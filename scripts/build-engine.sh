@@ -223,6 +223,12 @@ find "$source_dir" -maxdepth 2 -type f \
   \( -iname 'copying*' -o -iname 'license*' -o -iname 'authors*' \) \
   -exec cp -p {} "$stage_dir/share/wineforge/licenses/" \;
 
+# This target-specific document is the authoritative, process-free engine probe.
+# Planned declarations are deliberately omitted, and provided declarations must
+# be backed by patches that were verified and applied to this target above.
+python3 "$repo_dir/scripts/generate-capabilities.py" \
+  "$manifest" "$target" "$stage_dir/share/wineforge/capabilities.json"
+
 source_sha256=$(jq -er '.source.sha256' "$manifest")
 source_date_epoch=$(jq -er '.source.source_date_epoch' "$manifest")
 compiler_command=${CC:-cc}
@@ -236,13 +242,14 @@ jq -n \
   --arg binary_description "$binary_description" \
   --arg configure "$(printf '%q ' "${configure_args[@]}")" \
   --argjson patches "$patch_evidence" \
+  --slurpfile capabilities "$stage_dir/share/wineforge/capabilities.json" \
   --arg cc "$($compiler_command --version 2>/dev/null | head -1 || true)" \
   --arg make "$($make_command --version | head -1)" \
   '{schema_version: 1, version: $version, target: $target,
     source: {url: $source_url, sha256: $source_sha256},
     builder: {runner_image: $runner_image, compiler: $cc, make: $make},
     configure: $configure, source_patches: $patches,
-    executable: $binary_description}' \
+    executable: $binary_description, capabilities: $capabilities[0]}' \
   > "$stage_dir/share/wineforge/build-info.json"
 
 artifact="$dist_dir/wineforge-engine-$version-$target.tar.gz"
@@ -265,10 +272,11 @@ jq -n \
   --arg translation "$translation" \
   --arg sha256 "$artifact_sha256" \
   --arg wine_binary "$wine_relative" \
+  --slurpfile capabilities "$stage_dir/share/wineforge/capabilities.json" \
   '{schema_version: 1, id: $id, platform: $platform,
     host_architecture: "x86_64", translation: $translation,
     artifact: {source: {kind: "user-supplied"}, sha256: $sha256},
-    wine_binary: $wine_binary,
+    wine_binary: $wine_binary, capabilities: $capabilities[0],
     environment: {WINEESYNC: "1", WINEMSYNC: "1"},
     license: {
       name: "CrossOver component licences",

@@ -16,7 +16,54 @@
   "build": {
     "source_subdirectory": "sources/wine",
     "targets": ["linux-x86_64", "macos-x86_64"],
-    "patches": []
+    "patches": [
+      {
+        "path": "patches/25.1.1/0001-winemac-strict-window-isolation.patch",
+        "sha256": "30d9e8178eec3d03c006fcf4a70d8cbcab4c4d8abcd537fe05e72ed3c9f1bdd1",
+        "provenance": "Wineforge process-local policy for hiding and restoring Wine-owned floating windows when the application resigns or regains activity.",
+        "targets": ["macos-x86_64"]
+      }
+    ]
+  },
+  "capabilities": {
+    "protocol": 1,
+    "declarations": [
+      {
+        "id": "input.mapping",
+        "version": 1,
+        "state": "planned",
+        "targets": ["macos-x86_64"],
+        "features": {
+          "keyboard": true,
+          "keyboard_to_scroll": true,
+          "precise_scroll": true,
+          "horizontal_scroll": true,
+          "momentum": true,
+          "drag_scroll": true
+        }
+      },
+      {
+        "id": "macos.window-isolation",
+        "version": 1,
+        "state": "provided",
+        "evidence_patches": ["patches/25.1.1/0001-winemac-strict-window-isolation.patch"],
+        "targets": ["macos-x86_64"],
+        "scope": "process",
+        "privacy": {
+          "requires_external_window_observation": false,
+          "requires_accessibility": false,
+          "requires_screen_recording": false,
+          "requires_input_monitoring": false
+        }
+      },
+      {
+        "id": "host.bridge",
+        "version": 1,
+        "state": "planned",
+        "targets": ["linux-x86_64", "macos-x86_64"],
+        "transports": ["unix-socket", "named-pipe"]
+      }
+    ]
   },
   "redistribution": {
     "status": "review_required",
