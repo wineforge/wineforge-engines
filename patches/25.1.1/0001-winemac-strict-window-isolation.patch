@@ -1,0 +1,159 @@
+From: Wineforge contributors
+Subject: [PATCH] winemac: add opt-in strict floating-window isolation
+
+Some Win32 applications leave tooltip and transient topmost windows ordered in
+after the Wine application resigns active status.  On macOS those NSWindows can
+remain visible over unrelated applications and Spaces.
+
+Add an AppDefaults-compatible StrictWindowIsolation setting.  When enabled,
+Wine hides only its own visible floating WineWindow instances on application
+deactivation and restores only the instances hidden by that policy.  New
+floating windows ordered in while inactive are hidden immediately.  A normal
+Win32 order-out clears the saved state so it cannot be restored incorrectly.
+
+The implementation is process-local.  It does not enumerate other processes'
+windows or require Accessibility, Input Monitoring, or Screen Recording.
+
+--- a/dlls/winemac.drv/macdrv_cocoa.h
++++ b/dlls/winemac.drv/macdrv_cocoa.h
+@@ -160,6 +160,7 @@
+ /* main */
+ extern int macdrv_err_on;
+ extern int topmost_float_inactive;
++extern int strict_window_isolation;
+ extern int capture_displays_for_fullscreen;
+ /* CrossOver Hack 10912: Mac Edit menu */
+ extern int mac_edit_menu;
+--- a/dlls/winemac.drv/macdrv_main.c
++++ b/dlls/winemac.drv/macdrv_main.c
+@@ -43,6 +43,7 @@
+ C_ASSERT(NUM_EVENT_TYPES <= sizeof(macdrv_event_mask) * 8);
+ 
+ int topmost_float_inactive = TOPMOST_FLOAT_INACTIVE_NONFULLSCREEN;
++int strict_window_isolation = FALSE;
+ int capture_displays_for_fullscreen = 0;
+ BOOL skip_single_buffer_flushes = FALSE;
+ BOOL allow_vsync = TRUE;
+@@ -326,6 +327,9 @@
+         else
+             topmost_float_inactive = TOPMOST_FLOAT_INACTIVE_NONFULLSCREEN;
+     }
++
++    if (!get_config_key(hkey, appkey, "StrictWindowIsolation", buffer, sizeof(buffer)))
++        strict_window_isolation = IS_OPTION_TRUE(buffer[0]);
+ 
+     if (!get_config_key(hkey, appkey, "CaptureDisplaysForFullscreen", buffer, sizeof(buffer)))
+         capture_displays_for_fullscreen = IS_OPTION_TRUE(buffer[0]);
+--- a/dlls/winemac.drv/cocoa_window.h
++++ b/dlls/winemac.drv/cocoa_window.h
+@@ -81,6 +81,7 @@
+     BOOL ignore_windowDeminiaturize;
+     BOOL ignore_windowResize;
+     BOOL fakingClose;
++    BOOL hiddenForStrictIsolation;
+ }
+ 
+ @property (retain, readonly, nonatomic) WineEventQueue* queue;
+@@ -98,6 +99,8 @@
+ @property (readonly, nonatomic) BOOL presentsVisibleContent;
+ 
+     - (NSInteger) minimumLevelForActive:(BOOL)active;
++    - (void) hideForStrictIsolation;
++    - (void) restoreFromStrictIsolation;
+     - (void) updateFullscreen;
+ 
+     - (void) postKeyEvent:(NSEvent *)theEvent;
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -1249,6 +1249,24 @@
+     - (BOOL) isOrderedIn
+     {
+         return [self wouldBeVisible] || [self isMiniaturized];
++    }
++
++    - (void) hideForStrictIsolation
++    {
++        if (!hiddenForStrictIsolation && self.floating && [self isVisible])
++        {
++            hiddenForStrictIsolation = TRUE;
++            [self orderOut:nil];
++        }
++    }
++
++    - (void) restoreFromStrictIsolation
++    {
++        if (hiddenForStrictIsolation)
++        {
++            hiddenForStrictIsolation = FALSE;
++            [self orderFront:nil];
++        }
+     }
+ 
+     - (NSInteger) minimumLevelForActive:(BOOL)active
+@@ -1831,6 +1849,9 @@
+                 needAdjustWindowLevels = TRUE;
+             }
+             pendingOrderOut = FALSE;
++
++            if (strict_window_isolation && ![NSApp isActive])
++                [self hideForStrictIsolation];
+ 
+             if ([self becameEligibleParentOrChild])
+                 needAdjustWindowLevels = TRUE;
+@@ -1867,6 +1888,7 @@
+         BOOL wasVisible = [self isVisible];
+         BOOL wasOnActiveSpace = [self isOnActiveSpace];
+ 
++        hiddenForStrictIsolation = FALSE;
+         [self endWindowDragging];
+         [controller windowWillOrderOut:self];
+ 
+--- a/dlls/winemac.drv/cocoa_app.m
++++ b/dlls/winemac.drv/cocoa_app.m
+@@ -2465,6 +2465,7 @@
+     - (void)applicationDidBecomeActive:(NSNotification *)notification
+     {
+         NSNumber* displayID;
++        WineWindow* window;
+         NSDictionary* modesToRealize = [latentDisplayModes autorelease];
+ 
+         latentDisplayModes = [[NSMutableDictionary alloc] init];
+@@ -2475,6 +2476,14 @@
+         }
+ 
+         [self updateFullscreenWindows];
++        if (strict_window_isolation)
++        {
++            for (window in [NSApp windows])
++            {
++                if ([window isKindOfClass:[WineWindow class]])
++                    [window restoreFromStrictIsolation];
++            }
++        }
+         [self adjustWindowLevels:YES];
+ 
+         if (beenActive)
+@@ -2515,6 +2524,7 @@
+     {
+         macdrv_event* event;
+         WineEventQueue* queue;
++        WineWindow* window;
+ 
+         [self invalidateGotFocusEvents];
+ 
+@@ -2531,6 +2541,15 @@
+         }
+ 
+         [self releaseMouseCapture];
++
++        if (strict_window_isolation)
++        {
++            for (window in [NSApp windows])
++            {
++                if ([window isKindOfClass:[WineWindow class]])
++                    [window hideForStrictIsolation];
++            }
++        }
+     }
+ 
+     - (void) applicationDidUnhide:(NSNotification*)aNotification
