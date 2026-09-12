@@ -52,6 +52,7 @@ def main() -> None:
         inventory.append(item)
 
     inputs = {
+        "capabilities": build_info["capabilities"],
         "source": build_info["source"],
         "source_patches": build_info["source_patches"],
         "configure": build_info["configure"],

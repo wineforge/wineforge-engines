@@ -18,6 +18,45 @@
     "targets": ["linux-x86_64", "macos-x86_64"],
     "patches": []
   },
+  "capabilities": {
+    "protocol": 1,
+    "declarations": [
+      {
+        "id": "input.mapping",
+        "version": 1,
+        "state": "planned",
+        "targets": ["macos-x86_64"],
+        "features": {
+          "keyboard": true,
+          "keyboard_to_scroll": true,
+          "precise_scroll": true,
+          "horizontal_scroll": true,
+          "momentum": true,
+          "drag_scroll": true
+        }
+      },
+      {
+        "id": "macos.window-isolation",
+        "version": 1,
+        "state": "planned",
+        "targets": ["macos-x86_64"],
+        "scope": "process",
+        "privacy": {
+          "requires_external_window_observation": false,
+          "requires_accessibility": false,
+          "requires_screen_recording": false,
+          "requires_input_monitoring": false
+        }
+      },
+      {
+        "id": "host.bridge",
+        "version": 1,
+        "state": "planned",
+        "targets": ["linux-x86_64", "macos-x86_64"],
+        "transports": ["unix-socket", "named-pipe"]
+      }
+    ]
+  },
   "redistribution": {
     "status": "review_required",
     "reason": "Component-level licence and corresponding-source obligations must be reviewed before public binary release."

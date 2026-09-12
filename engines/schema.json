@@ -4,7 +4,7 @@
   "title": "Wineforge engine source",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "id", "upstream", "source", "build", "redistribution"],
+  "required": ["schema_version", "id", "upstream", "source", "build", "capabilities", "redistribution"],
   "properties": {
     "schema_version": { "const": 1 },
     "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+$" },
@@ -62,6 +62,18 @@
               }
             }
           }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "declarations"],
+      "properties": {
+        "protocol": { "const": 1 },
+        "declarations": {
+          "type": "array",
+          "items": { "$ref": "./capability-schema.json#/$defs/sourceDeclaration" }
         }
       }
     },

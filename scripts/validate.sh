@@ -260,7 +260,9 @@ printf 'synthetic archive\n' > "$reference_test/engine.tar.gz"
 jq -n '{schema_version: 1, version: "1.0.0", target: "linux-x86_64",
   source: {url: "https://example.invalid/source", sha256: ("0" * 64)},
   builder: {runner_image: "test", compiler: "cc", make: "make"},
-  configure: "--prefix=/", source_patches: [], executable: "ELF"}' \
+  configure: "--prefix=/", source_patches: [], executable: "ELF",
+  capabilities: {schema_version: 1, kind: "wineforge-engine-capabilities",
+    engine_id: "fixture", target: "linux-x86_64", protocol: 1, provided: []}}' \
   > "$reference_test/stage/share/wineforge/build-info.json"
 "$repo_dir/scripts/generate-reference.py" \
   "$reference_test/stage" "$reference_test/engine.tar.gz" \
@@ -282,6 +284,7 @@ fi
 for manifest in "$repo_dir"/engines/crossover-*.json; do
   manifest_version=$(jq -er '.source.version' "$manifest")
   if ! jq -e --arg version "$manifest_version" '
+    . as $root |
     .schema_version == 1 and
     (.id | test("^[a-z0-9][a-z0-9.-]+$")) and
     (.source.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
@@ -297,6 +300,38 @@ for manifest in "$repo_dir"/engines/crossover-*.json; do
       (.provenance | type == "string" and length > 0) and
       (.targets | type == "array" and length > 0) and
       ((.targets - ["linux-x86_64", "macos-x86_64"]) | length == 0))) and
+    (.capabilities.protocol == 1) and
+    (.capabilities.declarations | type == "array") and
+    ([.capabilities.declarations[].id] | length == (unique | length)) and
+    (all(.capabilities.declarations[]; . as $cap |
+      ($cap.id as $id | ["input.mapping", "macos.window-isolation", "host.bridge"] | index($id) != null) and
+      ($cap.version == 1) and
+      ($cap.state as $state | ["planned", "provided"] | index($state) != null) and
+      ($cap.targets | type == "array" and length > 0) and
+      (($cap.targets - ["linux-x86_64", "macos-x86_64"]) | length == 0) and
+      (if $cap.id == "input.mapping" then
+         ($cap.features | keys | sort == ["drag_scroll", "horizontal_scroll", "keyboard", "keyboard_to_scroll", "momentum", "precise_scroll"]) and
+         all($cap.features[]; type == "boolean")
+       elif $cap.id == "macos.window-isolation" then
+         ($cap.targets == ["macos-x86_64"]) and
+         ($cap.scope == "process") and
+         ($cap.privacy == {
+           requires_external_window_observation: false,
+           requires_accessibility: false,
+           requires_screen_recording: false,
+           requires_input_monitoring: false
+         })
+       elif $cap.id == "host.bridge" then
+         ($cap.transports | type == "array" and length > 0) and
+         (($cap.transports - ["unix-socket", "named-pipe"]) | length == 0)
+       else false end) and
+      (if $cap.state == "provided" then
+         ($cap.evidence_patches | type == "array" and length > 0) and
+         ([$cap.evidence_patches[] as $evidence |
+           $root.build.patches[] | select(.path == $evidence)] | length ==
+           ($cap.evidence_patches | length))
+       else true end))) as $valid_capabilities |
+    $valid_capabilities and
     (.redistribution.status as $status |
       (["review_required", "approved", "prohibited"] | index($status)) != null)
   ' "$manifest" >/dev/null; then
@@ -319,6 +354,60 @@ for manifest in "$repo_dir"/engines/crossover-*.json; do
     fi
   done < <(jq -c '.build.patches[]' "$manifest")
 done
+
+capability_test="$preparation_test/capabilities"
+mkdir -p -- "$capability_test/stage/share/wineforge"
+python3 "$repo_dir/scripts/generate-capabilities.py" \
+  "$repo_dir/engines/crossover-25.1.1.json" macos-x86_64 \
+  "$capability_test/stage/share/wineforge/capabilities.json"
+if ! jq -e '
+  .schema_version == 1 and
+  .kind == "wineforge-engine-capabilities" and
+  .protocol == 1 and
+  .target == "macos-x86_64" and
+  (.provided == [])
+' "$capability_test/stage/share/wineforge/capabilities.json" >/dev/null; then
+  printf 'planned capabilities leaked into runtime metadata\n' >&2
+  failures=$((failures + 1))
+fi
+if "$repo_dir/scripts/probe-capabilities.py" "$capability_test/stage" \
+  --id input.mapping >/dev/null 2>&1; then
+  printf 'capability probe reported an unprovided capability\n' >&2
+  failures=$((failures + 1))
+fi
+provided_manifest="$capability_test/provided.json"
+jq '
+  .build.patches = [{path: "patches/25.1.1/input.patch", sha256: ("0" * 64),
+    provenance: "fixture", targets: ["macos-x86_64"]}] |
+  .capabilities.declarations[0].state = "provided" |
+  .capabilities.declarations[0].evidence_patches = ["patches/25.1.1/input.patch"]
+' "$repo_dir/engines/crossover-25.1.1.json" > "$provided_manifest"
+python3 "$repo_dir/scripts/generate-capabilities.py" \
+  "$provided_manifest" macos-x86_64 \
+  "$capability_test/stage/share/wineforge/capabilities.json"
+if ! "$repo_dir/scripts/probe-capabilities.py" "$capability_test/stage" \
+  --id input.mapping | jq -e '.id == "input.mapping" and .version == 1' >/dev/null; then
+  printf 'provided capability could not be probed\n' >&2
+  failures=$((failures + 1))
+fi
+invalid_manifest="$capability_test/invalid.json"
+jq 'del(.capabilities.declarations[0].evidence_patches)' \
+  "$provided_manifest" > "$invalid_manifest"
+if python3 "$repo_dir/scripts/generate-capabilities.py" \
+  "$invalid_manifest" macos-x86_64 "$capability_test/invalid-output.json" \
+  >/dev/null 2>&1; then
+  printf 'provided capability without patch evidence was accepted\n' >&2
+  failures=$((failures + 1))
+fi
+tampered_metadata="$capability_test/tampered.json"
+jq '.provided = [.provided[0] | .state = "planned"]' \
+  "$capability_test/stage/share/wineforge/capabilities.json" > "$tampered_metadata"
+mv "$tampered_metadata" "$capability_test/stage/share/wineforge/capabilities.json"
+if "$repo_dir/scripts/probe-capabilities.py" "$capability_test/stage" \
+  >/dev/null 2>&1; then
+  printf 'capability probe accepted a non-provided runtime declaration\n' >&2
+  failures=$((failures + 1))
+fi
 
 if ! grep -Fq '+            if (check_bus_option(L"Enable IOHID", 0)) iohid_driver_init();' \
   "$repo_dir/patches/24.0.7/0007-winebus-disable-iohid-by-default.patch"; then
