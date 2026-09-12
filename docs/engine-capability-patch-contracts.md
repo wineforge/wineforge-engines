@@ -17,6 +17,10 @@ The executable-specific value takes precedence through Wine's existing
 `get_config_key` lookup.  A value beginning with `y`, `Y`, `t`, `T`, or `1`
 enables the policy.  Missing or false values retain upstream behavior.
 
+The later process-input patch also accepts
+`WINEFORGE_STRICT_WINDOW_ISOLATION`.  When present, this process-local setting
+overrides the registry policy without changing the prefix.
+
 The policy only observes and orders `WineWindow` instances returned by the
 process's own `NSApp`.  It does not use `CGWindowListCopyWindowInfo`, inspect
 another process, install an event tap, or require macOS privacy permissions.
@@ -48,6 +52,17 @@ settings through the same AppDefaults lookup:
 These settings need no additional source patch.  Capability metadata may
 advertise them when the selected source and target are known to contain this
 implementation.
+
+The Wineforge process-input patches expose the same behavior without prefix
+mutation.  Environment values override registry values:
+
+| Environment variable | Driver policy |
+| --- | --- |
+| `WINEFORGE_INPUT_LEFT_COMMAND_IS_CTRL` | `LeftCommandIsCtrl` |
+| `WINEFORGE_INPUT_RIGHT_COMMAND_IS_CTRL` | `RightCommandIsCtrl` |
+| `WINEFORGE_INPUT_LEFT_OPTION_IS_ALT` | `LeftOptionIsAlt` |
+| `WINEFORGE_INPUT_RIGHT_OPTION_IS_ALT` | `RightOptionIsAlt` |
+| `WINEFORGE_INPUT_PRECISE_SCROLLING` | `UsePreciseScrolling` |
 
 Arbitrary key-chord rewriting and keyboard-to-scroll synthesis are deliberately
 not claimed by these patches.  Implementing either safely requires a separately

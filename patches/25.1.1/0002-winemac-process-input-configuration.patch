@@ -1,0 +1,88 @@
+From: Wineforge contributors
+Subject: [PATCH] winemac: accept process-local input configuration
+
+The Mac driver already implements side-specific Command-to-Control and
+Option-to-Alt modifier translation plus precise or quantized physical scrolling.
+Expose those existing policies through narrowly scoped environment variables so
+a launcher can configure one Wine process without mutating its prefix.
+
+Environment values override the existing global and AppDefaults registry values.
+Only conventional true and false spellings are accepted.  This patch installs no
+event tap and does not observe input delivered to another process.
+
+--- a/dlls/winemac.drv/macdrv_main.c
++++ b/dlls/winemac.drv/macdrv_main.c
+@@ -26,6 +26,8 @@
+ 
+ #include "config.h"
+ 
++#include <stdlib.h>
++
+ #include <Security/AuthSession.h>
+ #include <IOKit/pwr_mgt/IOPMLib.h>
+ 
+@@ -39,6 +41,21 @@
+ 
+ #define IS_OPTION_TRUE(ch) \
+     ((ch) == 'y' || (ch) == 'Y' || (ch) == 't' || (ch) == 'T' || (ch) == '1')
++
++static void override_bool_option_from_environment(const char *name, int *option)
++{
++    const char *value = getenv(name);
++
++    if (!value || !value[0]) return;
++
++    if (IS_OPTION_TRUE(value[0]))
++        *option = TRUE;
++    else if (value[0] == 'n' || value[0] == 'N' || value[0] == 'f' ||
++             value[0] == 'F' || value[0] == '0')
++        *option = FALSE;
++    else
++        WARN("Ignoring invalid %s value %s. Expected true or false.\n", name, debugstr_a(value));
++}
+ 
+ C_ASSERT(NUM_EVENT_TYPES <= sizeof(macdrv_event_mask) * 8);
+ 
+@@ -330,6 +347,8 @@
+ 
+     if (!get_config_key(hkey, appkey, "StrictWindowIsolation", buffer, sizeof(buffer)))
+         strict_window_isolation = IS_OPTION_TRUE(buffer[0]);
++    override_bool_option_from_environment("WINEFORGE_STRICT_WINDOW_ISOLATION",
++                                          &strict_window_isolation);
+ 
+     if (!get_config_key(hkey, appkey, "CaptureDisplaysForFullscreen", buffer, sizeof(buffer)))
+         capture_displays_for_fullscreen = IS_OPTION_TRUE(buffer[0]);
+@@ -365,11 +382,6 @@
+     if (!get_config_key(hkey, appkey, "RightCommandIsCtrl", buffer, sizeof(buffer)))
+         right_command_is_ctrl = IS_OPTION_TRUE(buffer[0]);
+ 
+-    if (left_command_is_ctrl && right_command_is_ctrl && !left_option_is_alt && !right_option_is_alt)
+-        WARN("Both Command keys have been mapped to Control. There is no way to "
+-             "send an Alt key to Windows applications. Consider enabling "
+-             "LeftOptionIsAlt or RightOptionIsAlt.\n");
+-
+     if (!get_config_key(hkey, appkey, "AllowSoftwareRendering", buffer, sizeof(buffer)))
+         allow_software_rendering = IS_OPTION_TRUE(buffer[0]);
+ 
+@@ -384,7 +396,21 @@
+ 
+     if (!get_config_key(hkey, appkey, "UsePreciseScrolling", buffer, sizeof(buffer)))
+         use_precise_scrolling = IS_OPTION_TRUE(buffer[0]);
++
++    override_bool_option_from_environment("WINEFORGE_INPUT_LEFT_COMMAND_IS_CTRL",
++                                          &left_command_is_ctrl);
++    override_bool_option_from_environment("WINEFORGE_INPUT_RIGHT_COMMAND_IS_CTRL",
++                                          &right_command_is_ctrl);
++    override_bool_option_from_environment("WINEFORGE_INPUT_LEFT_OPTION_IS_ALT", &left_option_is_alt);
++    override_bool_option_from_environment("WINEFORGE_INPUT_RIGHT_OPTION_IS_ALT", &right_option_is_alt);
++    override_bool_option_from_environment("WINEFORGE_INPUT_PRECISE_SCROLLING",
++                                          &use_precise_scrolling);
+ 
++    if (left_command_is_ctrl && right_command_is_ctrl && !left_option_is_alt && !right_option_is_alt)
++        WARN("Both Command keys have been mapped to Control. There is no way to "
++             "send an Alt key to Windows applications. Consider enabling "
++             "LeftOptionIsAlt or RightOptionIsAlt.\n");
++
+     if (!get_config_key(hkey, appkey, "OpenGLSurfaceMode", buffer, sizeof(buffer)))
+     {
+         static const WCHAR transparentW[] = {'t','r','a','n','s','p','a','r','e','n','t',0};
