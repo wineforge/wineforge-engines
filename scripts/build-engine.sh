@@ -177,6 +177,25 @@ for before, after in changes.items():
         raise SystemExit("Diagnostic source anchor mismatch")
     s = s.replace(before, after)
 p.write_text(s)
+q = p.parent.parent / "ntdll/unix/signal_x86_64.c"
+t = q.read_text()
+anchors = {
+    '    thread_data->syscall_table = KeServiceDescriptorTable;':
+    '    ERR("[WF-DIAG] call_init_thunk entered fs32=%x\\n", fs32_sel);\n    thread_data->syscall_table = KeServiceDescriptorTable;',
+    '    arch_prctl( ARCH_SET_GS, teb );':
+    '    ERR("[WF-DIAG] before ARCH_SET_GS\\n");\n    arch_prctl( ARCH_SET_GS, teb );\n    ERR("[WF-DIAG] after ARCH_SET_GS\\n");',
+    '    if (fs32_sel) alloc_fs_sel( fs32_sel >> 3, get_wow_teb( teb ));':
+    '    ERR("[WF-DIAG] before alloc_fs_sel\\n");\n    if (fs32_sel) alloc_fs_sel( fs32_sel >> 3, get_wow_teb( teb ));\n    ERR("[WF-DIAG] after alloc_fs_sel\\n");',
+    '    NtSetContextThread( GetCurrentThread(), ctx );':
+    '    ERR("[WF-DIAG] before NtSetContextThread\\n");\n    NtSetContextThread( GetCurrentThread(), ctx );\n    ERR("[WF-DIAG] after NtSetContextThread\\n");',
+    '    __wine_syscall_dispatcher_return( frame, 0 );':
+    '    ERR("[WF-DIAG] before dispatcher return rip=%llx cs=%llx ss=%llx\\n", frame->rip, frame->cs, frame->ss);\n    __wine_syscall_dispatcher_return( frame, 0 );',
+}
+for before, after in anchors.items():
+    if t.count(before) != 1:
+        raise SystemExit("Thread diagnostic source anchor mismatch: " + before)
+    t = t.replace(before, after)
+q.write_text(t)
 PY
 fi
 
