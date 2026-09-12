@@ -14,6 +14,8 @@
         "input.scroll.precise",
         "input.scroll.horizontal",
         "input.scroll.momentum",
+        "input.scroll.page",
+        "input.scroll.edge",
         "input.scroll.drag",
         "macos.window-isolation.strict",
         "host.bridge"
@@ -36,6 +38,7 @@
               "WINEFORGE_INPUT_LEFT_OPTION_IS_ALT",
               "WINEFORGE_INPUT_RIGHT_OPTION_IS_ALT",
               "WINEFORGE_INPUT_PRECISE_SCROLLING",
+              "WINEFORGE_INPUT_SCROLL_RULES_V1",
               "WINEFORGE_STRICT_WINDOW_ISOLATION"
             ]
           }

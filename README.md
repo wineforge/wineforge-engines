@@ -172,7 +172,7 @@ Inspect an unpacked engine without executing Wine:
 
 ```sh
 ./scripts/probe-capabilities.py /path/to/wineforge-engine
-./scripts/probe-capabilities.py /path/to/wineforge-engine --id input.mapping
+./scripts/probe-capabilities.py /path/to/wineforge-engine --id input.scroll.keyboard-to-scroll
 ```
 
 ## Licensing

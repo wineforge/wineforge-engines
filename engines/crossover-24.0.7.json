@@ -70,6 +70,12 @@
         "sha256": "fa9e93e81412b90c2df445e8c324602a6592c47f87553e197445f15c97d27f3c",
         "provenance": "Wineforge process-local transport for the pinned Mac driver's existing modifier mapping and precise physical scrolling policies.",
         "targets": ["macos-x86_64"]
+      },
+      {
+        "path": "patches/24.0.7/0010-winemac-keyboard-scroll-rules.patch",
+        "sha256": "3a082bde14b731a13276817228f9442739ec6cbfd19fec29115443b62f232768",
+        "provenance": "Wineforge bounded process-local keyboard-to-scroll rule transport for the pinned Mac driver.",
+        "targets": ["macos-x86_64"]
       }
     ]
   },
@@ -101,8 +107,13 @@
       {
         "id": "input.scroll.keyboard-to-scroll",
         "version": 1,
-        "state": "planned",
-        "targets": ["macos-x86_64"]
+        "state": "provided",
+        "evidence_patches": ["patches/24.0.7/0010-winemac-keyboard-scroll-rules.patch"],
+        "targets": ["macos-x86_64"],
+        "transport": {
+          "kind": "environment",
+          "variables": ["WINEFORGE_INPUT_SCROLL_RULES_V1"]
+        }
       },
       {
         "id": "input.scroll.precise",
@@ -127,6 +138,18 @@
         "version": 1,
         "state": "provided",
         "evidence_patches": ["patches/24.0.7/0009-winemac-process-input-configuration.patch"],
+        "targets": ["macos-x86_64"]
+      },
+      {
+        "id": "input.scroll.page",
+        "version": 1,
+        "state": "planned",
+        "targets": ["macos-x86_64"]
+      },
+      {
+        "id": "input.scroll.edge",
+        "version": 1,
+        "state": "planned",
         "targets": ["macos-x86_64"]
       },
       {

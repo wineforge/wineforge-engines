@@ -307,7 +307,8 @@ for manifest in "$repo_dir"/engines/crossover-*.json; do
       ($cap.id as $id | [
         "input.keyboard.preset.mac-native", "input.keyboard.mapping",
         "input.scroll.keyboard-to-scroll", "input.scroll.precise",
-        "input.scroll.horizontal", "input.scroll.momentum", "input.scroll.drag",
+        "input.scroll.horizontal", "input.scroll.momentum", "input.scroll.page",
+        "input.scroll.edge", "input.scroll.drag",
         "macos.window-isolation.strict", "host.bridge"
       ] | index($id) != null) and
       ($cap.version == 1) and
@@ -361,6 +362,20 @@ for manifest in "$repo_dir"/engines/crossover-*.json; do
   done < <(jq -c '.build.patches[]' "$manifest")
 done
 
+for scroll_patch in \
+  "$repo_dir/patches/24.0.7/0010-winemac-keyboard-scroll-rules.patch" \
+  "$repo_dir/patches/25.1.1/0003-winemac-keyboard-scroll-rules.patch"; do
+  if ! grep -Fq 'WINEFORGE_INPUT_SCROLL_RULES_V1' "$scroll_patch"; then
+    printf 'keyboard-scroll patch is missing its versioned transport: %s\n' \
+      "$scroll_patch" >&2
+    failures=$((failures + 1))
+  fi
+  if ! grep -Fq 'MACDRV_MAX_INPUT_SCROLL_RULES 32' "$scroll_patch"; then
+    printf 'keyboard-scroll patch is missing its rule bound: %s\n' "$scroll_patch" >&2
+    failures=$((failures + 1))
+  fi
+done
+
 for input_patch in \
   "$repo_dir/patches/24.0.7/0009-winemac-process-input-configuration.patch" \
   "$repo_dir/patches/25.1.1/0002-winemac-process-input-configuration.patch"; do
@@ -391,6 +406,7 @@ if ! jq -e '
   .target == "macos-x86_64" and
   ([.provided[].id] == [
     "input.keyboard.preset.mac-native",
+    "input.scroll.keyboard-to-scroll",
     "input.scroll.precise",
     "input.scroll.horizontal",
     "input.scroll.momentum",
