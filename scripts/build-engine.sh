@@ -37,7 +37,8 @@ if [[ "$target" == macos-x86_64 ]]; then
   # x86_64 Windows modules for PE32 compatibility on current macOS.
   configure_args+=(--enable-archs=i386,x86_64 --without-alsa --without-cups --without-dbus --without-oss --without-pulse --without-sane --without-wayland --without-x)
 else
-  configure_args+=(--enable-win64)
+  # Keep Unix code 64-bit and include PE32 modules for Windows applications.
+  configure_args+=(--enable-archs=i386,x86_64)
 fi
 
 if [[ ${DRY_RUN:-0} == 1 ]]; then
@@ -212,11 +213,7 @@ if [[ "$target" == macos-x86_64 && -n ${WINEFORGE_DEPS_PREFIX:-} ]]; then
 fi
 
 wine_relative=${wine_binary#"$stage_dir"/}
-if [[ "$target" == macos-x86_64 ]]; then
-  "$repo_dir/scripts/smoke-engine.sh" "$stage_dir" "$wine_relative" --require-wow64
-else
-  "$repo_dir/scripts/smoke-engine.sh" "$stage_dir" "$wine_relative"
-fi
+"$repo_dir/scripts/smoke-engine.sh" "$stage_dir" "$wine_relative" --require-wow64
 
 mkdir -p -- "$stage_dir/share/wineforge/licenses"
 find "$source_dir" -maxdepth 2 -type f \
