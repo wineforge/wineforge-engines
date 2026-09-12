@@ -365,9 +365,11 @@ if ! jq -e '
   .kind == "wineforge-engine-capabilities" and
   .protocol == 1 and
   .target == "macos-x86_64" and
-  (.provided == [])
+  ([.provided[].id] == ["macos.window-isolation"]) and
+  (.provided[0].state == "provided") and
+  (.provided[0].scope == "process")
 ' "$capability_test/stage/share/wineforge/capabilities.json" >/dev/null; then
-  printf 'planned capabilities leaked into runtime metadata\n' >&2
+  printf 'runtime capability metadata does not match provided declarations\n' >&2
   failures=$((failures + 1))
 fi
 if "$repo_dir/scripts/probe-capabilities.py" "$capability_test/stage" \
@@ -377,7 +379,7 @@ if "$repo_dir/scripts/probe-capabilities.py" "$capability_test/stage" \
 fi
 provided_manifest="$capability_test/provided.json"
 jq '
-  .build.patches = [{path: "patches/25.1.1/input.patch", sha256: ("0" * 64),
+  .build.patches += [{path: "patches/25.1.1/input.patch", sha256: ("0" * 64),
     provenance: "fixture", targets: ["macos-x86_64"]}] |
   .capabilities.declarations[0].state = "provided" |
   .capabilities.declarations[0].evidence_patches = ["patches/25.1.1/input.patch"]
