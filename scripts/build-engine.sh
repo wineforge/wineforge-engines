@@ -159,6 +159,26 @@ build_dir="$work_dir/build"
 stage_dir="$work_dir/stage"
 mkdir -p -- "$build_dir" "$stage_dir"
 "$repo_dir/scripts/prepare-source.sh" "$source_dir"
+if [[ ${WINEFORGE_DIAG_WOW64:-0} == 1 ]]; then
+  python3 - "$source_dir/dlls/wow64cpu/cpu.c" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+s = p.read_text()
+changes = {
+    '    if (status || !strstr( buffer, "VirtualApple" ))':
+    '    ERR("[WF-DIAG] processor status=%lx brand=%.63s\\n", status, status ? "unavailable" : buffer);\n    if (status || !strstr( buffer, "VirtualApple" ))',
+    '    use_rosetta2_workaround = is_rosetta2();':
+    '    ERR("[WF-DIAG] CPU process init reached\\n");\n    use_rosetta2_workaround = is_rosetta2();\n    ERR("[WF-DIAG] rosetta workaround=%d\\n", use_rosetta2_workaround);',
+    '    fs32_sel = context.SegFs;':
+    '    fs32_sel = context.SegFs;\n    ERR("[WF-DIAG] selectors cs=%x ds=%x fs=%x\\n", cs64_sel, ds64_sel, fs32_sel);',
+}
+for before, after in changes.items():
+    if s.count(before) != 1:
+        raise SystemExit("Diagnostic source anchor mismatch")
+    s = s.replace(before, after)
+p.write_text(s)
+PY
+fi
 
 patch_evidence='[]'
 while IFS= read -r patch_spec; do
