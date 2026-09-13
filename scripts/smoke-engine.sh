@@ -32,11 +32,18 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-output=$(WINEPREFIX="$prefix" WINEDEBUG=-all ROSETTA_ADVERTISE_AVX=1 "$wine" cmd /c ver 2>&1) || {
-  printf '%s\n' "$output" >&2
+# Wine services can inherit stdout and keep a command-substitution pipe open
+# after cmd exits. Capture to a file, and bound Linux startup independently.
+wine_command=("$wine")
+if [[ $(uname -s) == Linux ]]; then
+  wine_command=(timeout --kill-after=10s 120s "$wine")
+fi
+if ! WINEPREFIX="$prefix" WINEDEBUG=-all ROSETTA_ADVERTISE_AVX=1 "${wine_command[@]}" cmd /c ver >"$prefix/version.log" 2>&1; then
+  cat "$prefix/version.log" >&2
   printf 'fresh-prefix engine acceptance failed\n' >&2
   exit 70
-}
+fi
+output=$(cat "$prefix/version.log")
 printf '%s\n' "$output" | grep -Eq 'Microsoft Windows [0-9]+' || {
   printf '%s\n' "$output" >&2
   printf 'fresh-prefix engine acceptance returned no Windows version\n' >&2
@@ -53,12 +60,13 @@ if [[ "$wow64_mode" == --require-wow64 ]]; then
     printf '32-bit cmd.exe was not installed into the fresh prefix\n' >&2
     exit 70
   }
-  wow64_output=$(WINEPREFIX="$prefix" WINEDEBUG=-all ROSETTA_ADVERTISE_AVX=1 "$wine" \
-    'C:\windows\syswow64\cmd.exe' /c ver 2>&1) || {
-    printf '%s\n' "$wow64_output" >&2
+  if ! WINEPREFIX="$prefix" WINEDEBUG=-all ROSETTA_ADVERTISE_AVX=1 "${wine_command[@]}" \
+    'C:\windows\syswow64\cmd.exe' /c ver >"$prefix/wow64.log" 2>&1; then
+    cat "$prefix/wow64.log" >&2
     printf '32-bit WoW64 engine acceptance failed\n' >&2
     exit 70
-  }
+  fi
+  wow64_output=$(cat "$prefix/wow64.log")
   printf '%s\n' "$wow64_output" | grep -Eq 'Microsoft Windows [0-9]+' || {
     printf '%s\n' "$wow64_output" >&2
     printf '32-bit WoW64 acceptance returned no Windows version\n' >&2
